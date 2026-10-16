@@ -10,6 +10,11 @@ export const WEEKLY_PRIZE_TIERS = [
   { rank: 3, prizeNaira: 2000 },
   { rank: 4, prizeNaira: 1000 },
   { rank: 5, prizeNaira: 500 },
+  { rank: 6, prizeNaira: 300 },
+  { rank: 7, prizeNaira: 250 },
+  { rank: 8, prizeNaira: 200 },
+  { rank: 9, prizeNaira: 150 },
+  { rank: 10, prizeNaira: 100 },
 ] as const
 export const MIN_AIRTIME_WITHDRAWAL_NAIRA = 100
 export const OFFER_HOLD_DAYS = 7
