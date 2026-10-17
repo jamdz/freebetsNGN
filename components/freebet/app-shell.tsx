@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, Gift, Home, ListChecks, Medal, UserRound, WalletCards } from 'lucide-react'
+import { Bell, Gift, Home, ListChecks, Medal, Shield, UserRound, WalletCards } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -39,6 +39,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Link href="/admin" className="hidden items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:flex" aria-label="Open admin console">
+              <Shield className="size-4" />
+              <span>Admin</span>
+            </Link>
             <div className="hidden items-center gap-2 rounded-full border border-amber-300/20 bg-amber-300/8 px-3 py-1.5 xl:flex">
               <WalletCards className="size-4 text-amber-300" />
               <span className="text-sm font-semibold text-amber-200">{formatNaira(sampleUser.rewardBalanceNaira)}</span>
