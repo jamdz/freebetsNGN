@@ -25,3 +25,7 @@ export function createMockUser(input: Omit<MockUser, 'id' | 'rewardBalanceNaira'
 export function getMockWithdrawalState() { return { rewardBalanceNaira, pendingWithdrawal } }
 export function setMockWithdrawalPending(value: boolean) { pendingWithdrawal = value }
 export function debitMockBalance(amount: number) { rewardBalanceNaira -= amount }
+
+export function getQualification(userId: string, gameweek = 'current') {
+  return { userId, gameweek, days: [{ day: 'Mon', predictions: 4, fixtures: 6 }, { day: 'Tue', predictions: 5, fixtures: 5 }, { day: 'Wed', predictions: 2, fixtures: 6 }, { day: 'Thu', predictions: 0, fixtures: 3 }, { day: 'Fri', predictions: 0, fixtures: 4 }, { day: 'Sat', predictions: 0, fixtures: 8 }, { day: 'Sun', predictions: 0, fixtures: 4 }] }
+}

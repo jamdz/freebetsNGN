@@ -20,6 +20,7 @@ export const MIN_AIRTIME_WITHDRAWAL_NAIRA = 100
 export const OFFER_HOLD_DAYS = 7
 export const REFERRAL_BONUS_NAIRA = 50
 export const REFERRAL_REQUIRED_PREDICTIONS = 10
+export const QUALIFICATION_RULES = { activeDaysRequired: 6, minPredictionsPerActiveDay: 4, dayCountsOnlyWhenFixturesAvailable: true, minFixturesForDayToCount: 4, withdrawalRequiresQualification: true, qualificationWindow: 'current-or-last-completed-gameweek' } as const
 
 export const TIEBREAKERS = [
   'more exact scores',

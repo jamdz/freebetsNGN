@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 
-type Credentials = { id?: string; nickname?: string; phone?: string; password?: string; rewardBalanceNaira?: number; referralCode?: string }
+type Credentials = { id?: string; email?: string; nickname?: string; phone?: string; password?: string; rewardBalanceNaira?: number; referralCode?: string }
 type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (data: Credentials) => void; signIn: (data: Credentials) => boolean; signOut: () => void; verifyOtp: (otp: string) => boolean; resetPassword: (phone: string, password: string) => boolean }
 const AuthContext = createContext<AuthContextValue | null>(null)
 const USER_KEY = 'freebet-user'
