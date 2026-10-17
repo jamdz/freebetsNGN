@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { AuthProvider } from '@/components/auth-provider'
 import './globals.css'
-import { AdConsentBanner } from '@/components/ads/AdSlot'
+import { AdConsentBanner } from '@/components/ads/consent-banner'
 
 export const metadata: Metadata = { title: 'FreeBetNGN — Predict. Climb. Win airtime.', description: 'Nigeria\'s free football prediction league.' }
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="en"><body><AuthProvider>{children}<AdConsentBanner /></AuthProvider></body></html> }

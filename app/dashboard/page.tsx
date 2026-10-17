@@ -1,6 +1,2 @@
-import { HomeDashboard } from '@/components/freebet/prediction-workspace'
-
-export default function DashboardPage() {
-  return <HomeDashboard />
-}
-
+import { redirect } from 'next/navigation'
+export default function DashboardPage() { redirect('/home') }

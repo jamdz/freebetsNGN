@@ -1,19 +1,20 @@
 'use client'
 
-import { Bell, Gift, Home, ListChecks, Medal, Shield, UserRound, WalletCards } from 'lucide-react'
+import { Bell, Gift, Home, ListChecks, Medal, UserRound, WalletCards } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { formatNaira } from '@/lib/format'
 import { APP_NAME, NAV_ITEMS } from '@/lib/config'
-import { sampleUser } from '@/lib/mock-data'
-import { AdConsentBanner } from '@/components/ads/AdSlot'
+import { useAuth } from '@/components/auth-provider'
 
 const navIcons = { Home, Fixtures: ListChecks, Leaderboard: Medal, Rewards: Gift, Profile: UserRound }
-const navRoutes = { Home: '/home', Fixtures: '/fixtures', Leaderboard: '/leaderboard', Rewards: '/rewards', Profile: '/dashboard' }
+const navRoutes = { Home: '/home', Fixtures: '/fixtures', Leaderboard: '/leaderboard', Rewards: '/rewards', Profile: '/profile' }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const initials = (user?.nickname || 'Player').slice(0, 2).toUpperCase()
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-background text-foreground">
@@ -28,7 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {NAV_ITEMS.map((item) => {
               const Icon = navIcons[item]
               const href = navRoutes[item]
-              const isActive = item === 'Profile' ? pathname === '/dashboard' : pathname === href || (item === 'Home' && pathname === '/')
+              const isActive = item === 'Profile' ? pathname === '/profile' : pathname === href || (item === 'Home' && pathname === '/')
               return (
                 <Link key={item} href={href} aria-current={isActive ? 'page' : undefined} className={`flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${isActive ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
                   <Icon className="size-4" />
@@ -39,16 +40,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <Link href="/admin" className="hidden items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:flex" aria-label="Open admin console">
-              <Shield className="size-4" />
-              <span>Admin</span>
-            </Link>
             <div className="hidden items-center gap-2 rounded-full border border-amber-300/20 bg-amber-300/8 px-3 py-1.5 xl:flex">
               <WalletCards className="size-4 text-amber-300" />
-              <span className="text-sm font-semibold text-amber-200">{formatNaira(sampleUser.rewardBalanceNaira)}</span>
+              <span className="text-sm font-semibold text-amber-200">{formatNaira(user?.rewardBalanceNaira ?? 0)}</span>
             </div>
             <Button aria-label="Notifications" variant="ghost" size="icon"><Bell /></Button>
-            <Link href="/dashboard" aria-label="Open profile" className="flex size-9 items-center justify-center rounded-full border border-primary/40 bg-primary/15 font-display text-xs font-bold text-primary">{sampleUser.initials}</Link>
+            <Link href="/profile" aria-label="Open profile" className="flex size-9 items-center justify-center rounded-full border border-primary/40 bg-primary/15 font-display text-xs font-bold text-primary">{initials}</Link>
           </div>
         </div>
       </header>
@@ -60,7 +57,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {NAV_ITEMS.map((item) => {
             const Icon = navIcons[item]
             const href = navRoutes[item]
-            const isActive = item === 'Profile' ? pathname === '/dashboard' : pathname === href || (item === 'Home' && pathname === '/')
+            const isActive = item === 'Profile' ? pathname === '/profile' : pathname === href || (item === 'Home' && pathname === '/')
             return <Link key={item} href={href} aria-current={isActive ? 'page' : undefined} className={`flex min-w-14 flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-[10px] transition-colors ${isActive ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-primary'}`}><Icon className="size-5" /><span>{item}</span></Link>
           })}
         </div>
