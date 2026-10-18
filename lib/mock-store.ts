@@ -10,6 +10,7 @@ export type MockUser = {
 const users: MockUser[] = []
 let rewardBalanceNaira = 1250
 let pendingWithdrawal = false
+let pendingWithdrawalMethods: Partial<Record<'airtime' | 'bank', boolean>> = {}
 
 export function findMockUser(identifier: string, password?: string) {
   const normalized = identifier.trim().toLowerCase()
@@ -24,6 +25,8 @@ export function createMockUser(input: Omit<MockUser, 'id' | 'rewardBalanceNaira'
 
 export function getMockWithdrawalState() { return { rewardBalanceNaira, pendingWithdrawal } }
 export function setMockWithdrawalPending(value: boolean) { pendingWithdrawal = value }
+export function getMockWithdrawalMethodState(method: 'airtime' | 'bank') { return Boolean(pendingWithdrawalMethods[method]) }
+export function setMockWithdrawalMethodPending(method: 'airtime' | 'bank', value: boolean) { pendingWithdrawalMethods[method] = value }
 export function debitMockBalance(amount: number) { rewardBalanceNaira -= amount }
 
 export function getReferralMockData() { return { general: { code: 'TUNDE86', link: 'https://freebetngn.com/join/TUNDE86' }, promo: { code: 'PREDICT24', link: 'https://freebetngn.com/campaign/PREDICT24', name: 'October Predictor Drive', registered: 684, target: 1000, reward: 100 }, logs: [{ friend: 'Ada***42', program: 'General', date: 'Oct 12, 2026', activeDays: 11, activeTarget: 24, predictions: 7, reward: 50, status: 'In progress' }, { friend: 'Chi***08', program: 'Promotion', date: 'Oct 8, 2026', activeDays: 0, activeTarget: 1, predictions: 10, reward: 100, status: 'Pending' }, { friend: 'Em***19', program: 'General', date: 'Sep 28, 2026', activeDays: 24, activeTarget: 24, predictions: 12, reward: 50, status: 'Credited' }] } }
