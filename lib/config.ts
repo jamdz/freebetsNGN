@@ -19,6 +19,7 @@ export const WEEKLY_PRIZE_TIERS = [
 export const MIN_AIRTIME_WITHDRAWAL_NAIRA = 100
 export const OFFER_HOLD_DAYS = 7
 export const REFERRAL_BONUS_NAIRA = 50
+export const GENERAL_REFERRAL_RULES = { rewardNaira: 50, activeDaysRequired: 24, windowDays: 28, minPredictions: 10, minPredictionsPerActiveDay: 1 } as const
 export const REFERRAL_REQUIRED_PREDICTIONS = 10
 export const QUALIFICATION_RULES = { activeDaysRequired: 6, minPredictionsPerActiveDay: 4, dayCountsOnlyWhenFixturesAvailable: true, minFixturesForDayToCount: 4, withdrawalRequiresQualification: true, qualificationWindow: 'current-or-last-completed-gameweek' } as const
 

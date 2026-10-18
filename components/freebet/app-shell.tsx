@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="text-sm font-semibold text-amber-200">{formatNaira(user?.rewardBalanceNaira ?? 0)}</span>
             </div>
             <Button aria-label="Notifications" variant="ghost" size="icon"><Bell /></Button>
-            <Link href="/profile" aria-label="Open profile" className="flex size-9 items-center justify-center rounded-full border border-primary/40 bg-primary/15 font-display text-xs font-bold text-primary">{initials}</Link>
+            <Link href="/referrals" aria-label="Open referral hub" className="hidden text-sm font-semibold text-muted-foreground hover:text-foreground sm:inline">Earn</Link><Link href="/profile" aria-label="Open profile" className="flex size-9 items-center justify-center rounded-full border border-primary/40 bg-primary/15 font-display text-xs font-bold text-primary">{initials}</Link>
           </div>
         </div>
       </header>
