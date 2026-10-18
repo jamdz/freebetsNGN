@@ -10,8 +10,8 @@ function secret() { return process.env.ADMIN_SESSION_SECRET || 'development-admi
 function sign(value: string) { return createHmac('sha256', secret()).update(value).digest('base64url') }
 function validSignature(value: string, signature: string) { const expected = sign(value); return expected.length === signature.length && timingSafeEqual(Buffer.from(expected), Buffer.from(signature)) }
 
-export function isAdminPath(pathname: string) { const configured = process.env.ADMIN_PATH; return Boolean(configured && pathname.startsWith(configured)) }
-export function adminPath() { return process.env.ADMIN_PATH || '/ops-x7k2p' }
+export function adminPath() { const configured = process.env.ADMIN_PATH?.trim() || 'ops-x7k2p'; return `/${configured.replace(/^\/+|\/+$/g, '')}` }
+export function isAdminPath(pathname: string) { const configured = adminPath(); return pathname.toLowerCase().startsWith(configured.toLowerCase()) }
 export function isLoginLocked(key: string) { const item = attempts.get(key); return Boolean(item && item.lockedUntil > Date.now()) }
 export function recordLoginAttempt(key: string, success: boolean) { if (success) { attempts.delete(key); return } const item = attempts.get(key) || { failures: 0, lockedUntil: 0 }; item.failures += 1; if (item.failures >= 5) item.lockedUntil = Date.now() + 15 * 60 * 1000; attempts.set(key, item) }
 export async function verifyAdminCredentials(email: string, password: string) { const expectedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase(); const passwordHash = process.env.ADMIN_PASSWORD_HASH; return Boolean(expectedEmail && passwordHash && email.trim().toLowerCase() === expectedEmail && await bcrypt.compare(password, passwordHash)) }

@@ -3,9 +3,10 @@ import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
-  const adminPath = process.env.ADMIN_PATH
+  const configuredPath = process.env.ADMIN_PATH?.trim() || 'ops-x7k2p'
+  const adminPath = `/${configuredPath.replace(/^\/+|\/+$/g, '')}`
   if (pathname === '/admin' || pathname.startsWith('/admin/') || pathname === '/console-internal' || pathname.startsWith('/console-internal/')) return new NextResponse('Not Found', { status: 404 })
-  if (!adminPath || !pathname.startsWith(adminPath)) return NextResponse.next()
+  if (!pathname.toLowerCase().startsWith(adminPath.toLowerCase())) return NextResponse.next()
   const target = pathname.slice(adminPath.length) || '/'
   const rewrite = request.nextUrl.clone()
   rewrite.pathname = `/console-internal${target}`
