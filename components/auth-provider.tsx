@@ -1,9 +1,10 @@
 'use client'
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 
 type Credentials = { id?: string; email?: string; nickname?: string; phone?: string; password?: string; rewardBalanceNaira?: number; referralCode?: string; emailVerified?: boolean; phoneVerified?: boolean }
-type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (data: Credentials) => void; signIn: (data: Credentials) => boolean; signOut: () => void; verifyOtp: (otp: string) => boolean; verifyEmail: () => void; resetPassword: (phone: string, password: string) => boolean }
+type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (data: Credentials) => Promise<void>; signIn: (data: Credentials) => boolean; signOut: () => void; verifyOtp: (otp: string) => boolean; verifyEmail: () => void; resetPassword: (phone: string, password: string) => boolean }
 const AuthContext = createContext<AuthContextValue | null>(null)
 const USER_KEY = 'freebet-user'
 const USERS_KEY = 'freebet-users'
@@ -15,7 +16,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { setUser(read<Credentials | null>(USER_KEY, null)); setReady(true) }, [])
   useEffect(() => { if (!ready) return; const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/terms', '/privacy', '/prize-rules', '/responsible-play']; const isPublic = publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)); const isAdminRoute = /^\/freebetngn\/folder\/admin(?:\/|$)/i.test(pathname); if (!user && !isPublic && !isAdminRoute) router.replace('/login'); if (user && ['/login','/signup'].includes(pathname)) router.replace('/home') }, [pathname, ready, user, router])
   const save = (next: Credentials | null) => { setUser(next); if (next) sessionStorage.setItem(USER_KEY, JSON.stringify(next)); else sessionStorage.removeItem(USER_KEY) }
-  const signUp = (data: Credentials) => { const next = { ...data, id: `u_${Date.now()}`, rewardBalanceNaira: 1250, emailVerified: false, phoneVerified: false }; const users = read<Credentials[]>(USERS_KEY, []); sessionStorage.setItem(USERS_KEY, JSON.stringify([...users, next])); save(next); router.push('/verify') }
+  const signUp = async (data: Credentials) => { const supabase = createSupabaseClient(); const { error } = await supabase.auth.signUp({ email: data.email!, password: data.password!, options: { emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`, data: { nickname: data.nickname, phone: data.phone, referralCode: data.referralCode } } }); if (error) throw new Error('Unable to create account. Check your details and try again.'); const next = { ...data, id: `u_${Date.now()}`, rewardBalanceNaira: 1250, emailVerified: false, phoneVerified: false }; const users = read<Credentials[]>(USERS_KEY, []); sessionStorage.setItem(USERS_KEY, JSON.stringify([...users, next])); save(next); router.push('/verify') }
   const signIn = (data: Credentials) => { const identifier = (data.nickname || '').trim().toLowerCase(); const found = read<Credentials[]>(USERS_KEY, []).find((item) => (item.nickname || '').toLowerCase() === identifier || item.phone === data.nickname); if (!found || found.password !== data.password) return false; save(found); router.push('/home'); return true }
   const signOut = () => { save(null); router.replace('/login') }
   const verifyOtp = (otp: string) => { if (otp !== '123456') return false; const next = user ? { ...user, phoneVerified: true } : user; save(next); router.push('/home'); return true }
