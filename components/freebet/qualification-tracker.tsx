@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Info } from 'lucide-react'
 import { QUALIFICATION_RULES } from '@/lib/config'
+import { lagosDate } from '@/lib/dates'
 import { Button } from '@/components/ui/button'
 
 type Day = { label: string; predictions: number; fixtures: number; state: 'done' | 'progress' | 'missed' | 'not-enough' | 'upcoming' }
@@ -14,7 +15,7 @@ export function QualificationTracker({ compact = false, data }: { compact?: bool
   const start = data?.startsAt ? new Date(data.startsAt) : new Date()
   const days: Day[] = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(start); date.setDate(date.getDate() + index)
-    const key = date.toISOString().slice(0, 10)
+    const key = lagosDate(date)
     const record = source.find((item) => item.activity_date === key)
     const predictions = record?.predictions_count ?? 0
     const state = predictions >= QUALIFICATION_RULES.minPredictionsPerActiveDay ? 'done' : date.getTime() > Date.now() ? 'upcoming' : predictions > 0 ? 'progress' : 'not-enough'
