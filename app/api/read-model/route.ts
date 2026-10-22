@@ -66,5 +66,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ gameweek, config, predictions: data ?? [] })
   }
 
+  if (resource === 'leaderboard') {
+    const period = searchParams.get('period') ?? 'week'
+    const { data: rows, error } = await supabase.from('weekly_leaderboard').select('user_id, gameweek_id, points, exact_scores, correct_results, predictions_count, qualified, first_prediction_at, profiles(nickname), gameweeks(starts_at)')
+    if (error) return failure('Unable to load leaderboard', error)
+    const monthKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos', year: 'numeric', month: '2-digit' }).format(new Date())
+    const filtered = (rows ?? []).filter((row) => {
+      if (period === 'week') return row.gameweek_id === gameweek?.id
+      if (period === 'month') return typeof (Array.isArray(row.gameweeks) ? row.gameweeks[0] : row.gameweeks)?.starts_at === 'string' && new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos', year: 'numeric', month: '2-digit' }).format(new Date((Array.isArray(row.gameweeks) ? row.gameweeks[0] : row.gameweeks)?.starts_at)) === monthKey
+      return true
+    })
+    const grouped = Object.values(filtered.reduce<Record<string, { user_id: string; nickname: string; points: number; exact_scores: number; correct_results: number; qualified: boolean; first_prediction_at: string | null }>>((acc, row) => {
+      const current = acc[row.user_id] ?? { user_id: row.user_id, nickname: (Array.isArray(row.profiles) ? row.profiles[0] : row.profiles)?.nickname ?? 'Player', points: 0, exact_scores: 0, correct_results: 0, qualified: true, first_prediction_at: null }
+      current.points += Number(row.points ?? 0); current.exact_scores += Number(row.exact_scores ?? 0); current.correct_results += Number(row.correct_results ?? 0); current.qualified = current.qualified && Boolean(row.qualified); current.first_prediction_at = !current.first_prediction_at || (row.first_prediction_at && row.first_prediction_at < current.first_prediction_at) ? row.first_prediction_at : current.first_prediction_at; acc[row.user_id] = current; return acc
+    }, {})).sort((a, b) => b.points - a.points || b.exact_scores - a.exact_scores || b.correct_results - a.correct_results || String(a.first_prediction_at ?? '').localeCompare(String(b.first_prediction_at ?? ''))).map((row, index) => ({ ...row, rank: index + 1 }))
+    return NextResponse.json({ rows: grouped, currentUserId: user.id, prizeTiers: config.prizeTiers })
+  }
+
   return NextResponse.json({ error: 'Unsupported read model' }, { status: 400 })
 }
