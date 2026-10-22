@@ -1,5 +1,5 @@
-import { PredictionsPage } from '@/components/freebet/social-pages'
+import { RealPredictionsPage } from '@/components/freebet/real-predictions-page'
 
 export default function Page() {
-  return <PredictionsPage />
+  return <RealPredictionsPage />
 }

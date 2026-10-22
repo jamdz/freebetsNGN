@@ -35,5 +35,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ gameweek, fixtures: fixturesResult.data ?? [], predictions, profile: profileResult.data, activity: activityResult.data ?? [], qualification: qualificationResult.data, weekly: { points: leaderboard.find((row) => row.user_id === user.id)?.points ?? 0, rank: current < 0 ? null : current + 1, predictions: predictions.length, boostersLeft: Math.max(0, 3 - predictions.filter((prediction) => prediction.booster).length) } })
   }
 
+  if (resource === 'predictions') {
+    const gameweekId = searchParams.get('gameweek') ?? gameweek?.id
+    const predictionsQuery = supabase.from('predictions').select('id, fixture_id, outcome, home_goals, away_goals, booster, points_awarded, result, created_at, fixtures(id, kickoff_at, status, home_goals, away_goals, competitions(name), home_team:teams!fixtures_home_team_id_fkey(name), away_team:teams!fixtures_away_team_id_fkey(name))').eq('user_id', user.id).order('created_at', { ascending: false })
+    const scopedQuery = gameweekId ? predictionsQuery.eq('gameweek_id', gameweekId) : predictionsQuery
+    const { data, error } = await scopedQuery
+    if (error) return NextResponse.json({ error: 'Unable to load predictions' }, { status: 500 })
+    return NextResponse.json({ gameweek, predictions: data ?? [] })
+  }
+
   return NextResponse.json({ error: 'Unsupported read model' }, { status: 400 })
 }
