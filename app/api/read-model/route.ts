@@ -12,6 +12,9 @@ export async function GET(request: Request) {
   const resource = searchParams.get('resource') ?? 'home'
   const now = new Date().toISOString()
   const { data: gameweek, error: gameweekError } = await supabase.from('gameweeks').select('id, starts_at, ends_at, prize_status, qualification_waived').lte('starts_at', now).gte('ends_at', now).maybeSingle()
+  const { data: configRows, error: configError } = await supabase.from('app_config').select('key, value').in('key', ['correctOutcome', 'exactScoreBonus', 'boosterMultiplier'])
+  if (configError) return NextResponse.json({ error: 'Unable to load scoring configuration' }, { status: 500 })
+  const config = Object.fromEntries((configRows ?? []).map((row) => [row.key, Number(row.value)]))
   if (gameweekError) return NextResponse.json({ error: 'Unable to load the current gameweek' }, { status: 500 })
 
   if (resource === 'home' || resource === 'fixtures') {
@@ -19,7 +22,7 @@ export async function GET(request: Request) {
     const predictionsQuery = gameweek ? supabase.from('predictions').select('fixture_id, outcome, home_goals, away_goals, booster, points_awarded, result').eq('user_id', user.id).eq('gameweek_id', gameweek.id) : Promise.resolve({ data: [], error: null })
     const [fixturesResult, predictionsResult] = await Promise.all([fixturesQuery, predictionsQuery])
     if (fixturesResult.error || predictionsResult.error) return NextResponse.json({ error: 'Unable to load fixtures' }, { status: 500 })
-    if (resource === 'fixtures') return NextResponse.json({ gameweek, fixtures: fixturesResult.data ?? [], predictions: predictionsResult.data ?? [] })
+    if (resource === 'fixtures') return NextResponse.json({ gameweek, config: { correctOutcome: config.correctOutcome, exactScoreBonus: config.exactScoreBonus, boosterMultiplier: config.boosterMultiplier }, fixtures: fixturesResult.data ?? [], predictions: predictionsResult.data ?? [] })
 
     const [profileResult, activityResult, qualificationResult, leaderboardResult] = await Promise.all([
       supabase.from('profiles').select('nickname, streak_count').eq('id', user.id).maybeSingle(),
@@ -32,7 +35,7 @@ export async function GET(request: Request) {
     const leaderboard = leaderboardResult.data ?? []
     const current = leaderboard.findIndex((row) => row.user_id === user.id)
     const predictions = predictionsResult.data ?? []
-    return NextResponse.json({ gameweek, fixtures: fixturesResult.data ?? [], predictions, profile: profileResult.data, activity: activityResult.data ?? [], qualification: qualificationResult.data, weekly: { points: leaderboard.find((row) => row.user_id === user.id)?.points ?? 0, rank: current < 0 ? null : current + 1, predictions: predictions.length, boostersLeft: Math.max(0, 3 - predictions.filter((prediction) => prediction.booster).length) } })
+    return NextResponse.json({ gameweek, config: { correctOutcome: config.correctOutcome, exactScoreBonus: config.exactScoreBonus, boosterMultiplier: config.boosterMultiplier }, fixtures: fixturesResult.data ?? [], predictions, profile: profileResult.data, activity: activityResult.data ?? [], qualification: qualificationResult.data, weekly: { points: leaderboard.find((row) => row.user_id === user.id)?.points ?? 0, rank: current < 0 ? null : current + 1, predictions: predictions.length, boostersLeft: Math.max(0, 3 - predictions.filter((prediction) => prediction.booster).length) } })
   }
 
   if (resource === 'predictions') {
