@@ -16,7 +16,6 @@ export type LeaderboardEntry = {
   rank: number; userId: string; displayName: string; initials: string; points: number
   exactScores: number; correctOutcomes: number; firstPredictionAt: string; prizeNaira?: number
 }
-export type League = { id: string; name: string; memberCount: number; rank: number; points: number }
 export type WalletEntry = {
   id: string; type: WalletEntryType; amountNaira: number; description: string; createdAt: string
 }

@@ -1,4 +1,4 @@
-import type { Competition, Fixture, LeaderboardEntry, League, Prediction, Team, User, WalletEntry } from './types'
+import type { Competition, Fixture, LeaderboardEntry, Prediction, Team, User, WalletEntry } from './types'
 
 export const competitions: Competition[] = [
   { id: 'prem', name: 'Premier League', shortName: 'EPL', color: '#38BDF8' },
@@ -25,5 +25,4 @@ export const fixtures: Fixture[] = [
 export const sampleUser: User = { id: 'u1', displayName: 'Tunde A.', initials: 'TA', phoneNumber: '0803 123 4567', points: 248, weeklyPoints: 86, rewardBalanceNaira: 1250, rank: 12, streak: 4, predictionsCount: 18 }
 export const leaderboard: LeaderboardEntry[] = Array.from({ length: 20 }, (_, index) => ({ rank: index + 1, userId: `u${index + 1}`, displayName: ['Chuka P.', 'Adaeze K.', 'Bello M.', 'Seyi O.', 'Ifeoma N.'][index % 5], initials: ['CP','AK','BM','SO','IN'][index % 5], points: 142 - index * 4, exactScores: Math.max(0, 8 - Math.floor(index / 3)), correctOutcomes: 20 - index, firstPredictionAt: kickoff(17, 8), prizeNaira: index < 5 ? [5000, 3000, 2000, 1000, 500][index] : undefined }))
 export const samplePredictions: Prediction[] = fixtures.slice(0, 6).map((fixture, index) => ({ id: `p${index + 1}`, userId: sampleUser.id, fixtureId: fixture.id, homeScore: index % 3, awayScore: (index + 1) % 3, points: index % 2 ? 3 : 5, isBooster: index === 1, submittedAt: kickoff(16, 10) }))
-export const leagues: League[] = [{ id: 'friends', name: 'Weekend Ballers', memberCount: 24, rank: 3, points: 86 }, { id: 'campus', name: 'UNILAG Predictors', memberCount: 102, rank: 18, points: 86 }]
 export const walletEntries: WalletEntry[] = [{ id: 'w1', type: 'credit', amountNaira: 1000, description: 'Weekly leaderboard prize', createdAt: kickoff(10, 12) }, { id: 'w2', type: 'credit', amountNaira: 250, description: 'Welcome reward', createdAt: kickoff(3, 9) }]

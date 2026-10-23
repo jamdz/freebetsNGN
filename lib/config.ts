@@ -34,4 +34,3 @@ export const TIEBREAKERS = [
 export const TIME_ZONE = 'Africa/Lagos'
 export const APP_NAME = 'FreeBetNGN'
 export const NAV_ITEMS = ['Home', 'Fixtures', 'Leaderboard', 'Rewards', 'Profile'] as const
-export const LEAGUE_NAMES = ['Premier League', 'La Liga', 'Champions League', 'NPFL'] as const
