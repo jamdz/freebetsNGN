@@ -4,8 +4,8 @@ import { lagosDate } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 
-function failure(message: string, error?: { message?: string }, status = 500) {
-  if (error) console.error(`[read-model] ${message}:`, error.message ?? error)
+function failure(message: string, error?: { message?: string; code?: string; details?: string | null }, status = 500) {
+  if (error) console.error(`[read-model] ${message}:`, { message: error.message, code: error.code, details: error.details })
   return NextResponse.json({ error: message, ...(process.env.NODE_ENV === 'development' && error?.message ? { detail: error.message } : {}) }, { status })
 }
 
@@ -114,15 +114,18 @@ export async function GET(request: Request) {
   }
 
   if (resource === 'profile') {
-    const [profileResult, pointsResult, prizesResult, qualificationResult] = await Promise.all([
-      supabase.from('profiles').select('id,nickname,email,phone,email_verified,phone_verified,referral_code,created_at').eq('id', user.id).maybeSingle(),
-      supabase.from('weekly_leaderboard').select('gameweek_id,points,exact_scores,correct_results,predictions_count,qualified,first_prediction_at,gameweeks(starts_at,ends_at)').eq('user_id', user.id),
-      supabase.from('prize_awards').select('id,gameweek_id,rank,amount,status,awarded_at,gameweeks(starts_at,ends_at)').eq('user_id', user.id).order('awarded_at', { ascending: false }),
-      supabase.from('weekly_qualification').select('gameweek_id,active_days,qualified,gameweeks(starts_at,ends_at)').eq('user_id', user.id).order('gameweek_id', { ascending: false }),
-    ])
-    const failed = [profileResult, pointsResult, prizesResult, qualificationResult].find((result) => result.error)
-    if (failed) return failure('Unable to load profile data', failed.error ?? undefined)
-    return NextResponse.json({ profile: profileResult.data, points: pointsResult.data ?? [], prizes: prizesResult.data ?? [], qualification: qualificationResult.data ?? [] })
+    const profileResult = await supabase.from('profiles').select('id,nickname,email,phone,email_verified,phone_verified,referral_code,created_at,status').eq('id', user.id).maybeSingle()
+    const leaderboardResult = await supabase.from('weekly_leaderboard').select('gameweek_id,points,exact_scores,correct_results,predictions_count,qualified,first_prediction_at').eq('user_id', user.id)
+    const leaderboardRows = leaderboardResult.data ?? []
+    const gameweekIds = [...new Set(leaderboardRows.map((row) => row.gameweek_id))]
+    const gameweeksResult = gameweekIds.length ? await supabase.from('gameweeks').select('id,starts_at,ends_at').in('id', gameweekIds) : { data: [], error: null }
+    const prizesResult = await supabase.from('prize_awards').select('id,gameweek_id,rank,amount_naira,created_at,gameweeks(starts_at,ends_at)').eq('user_id', user.id).order('created_at', { ascending: false })
+    const qualificationResult = await supabase.from('weekly_qualification').select('gameweek_id,active_days,qualified,gameweeks(starts_at,ends_at)').eq('user_id', user.id).order('gameweek_id', { ascending: false })
+    const failed = [profileResult, leaderboardResult, gameweeksResult, prizesResult, qualificationResult].find((result) => result.error)
+    if (failed?.error) return failure('Unable to load profile data', failed.error)
+    const gameweeks = Object.fromEntries((gameweeksResult.data ?? []).map((row) => [row.id, row]))
+    const points = leaderboardRows.map((row) => ({ ...row, gameweeks: gameweeks[row.gameweek_id] ?? null }))
+    return NextResponse.json({ profile: { ...profileResult.data, email: profileResult.data?.email ?? user.email, email_verified: profileResult.data?.email_verified ?? Boolean(user.email_confirmed_at) }, points, prizes: prizesResult.data ?? [], qualification: qualificationResult.data ?? [] })
   }
 
   return NextResponse.json({ error: 'Unsupported read model' }, { status: 400 })
