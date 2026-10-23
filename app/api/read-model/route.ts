@@ -113,5 +113,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ rows: grouped, currentUserId: user.id, prizeTiers: config.prizeTiers })
   }
 
+  if (resource === 'profile') {
+    const [profileResult, pointsResult, prizesResult, qualificationResult] = await Promise.all([
+      supabase.from('profiles').select('id,nickname,email,phone,email_verified,phone_verified,referral_code,created_at').eq('id', user.id).maybeSingle(),
+      supabase.from('weekly_leaderboard').select('gameweek_id,points,exact_scores,correct_results,predictions_count,qualified,first_prediction_at,gameweeks(starts_at,ends_at)').eq('user_id', user.id),
+      supabase.from('prize_awards').select('id,gameweek_id,rank,amount,status,awarded_at,gameweeks(starts_at,ends_at)').eq('user_id', user.id).order('awarded_at', { ascending: false }),
+      supabase.from('weekly_qualification').select('gameweek_id,active_days,qualified,gameweeks(starts_at,ends_at)').eq('user_id', user.id).order('gameweek_id', { ascending: false }),
+    ])
+    const failed = [profileResult, pointsResult, prizesResult, qualificationResult].find((result) => result.error)
+    if (failed) return failure('Unable to load profile data', failed.error ?? undefined)
+    return NextResponse.json({ profile: profileResult.data, points: pointsResult.data ?? [], prizes: prizesResult.data ?? [], qualification: qualificationResult.data ?? [] })
+  }
+
   return NextResponse.json({ error: 'Unsupported read model' }, { status: 400 })
 }
