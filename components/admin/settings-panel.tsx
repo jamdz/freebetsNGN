@@ -1,5 +1,7 @@
 'use client'
 
-export function SettingsPanel() {
-  return null
-}
+import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+
+const defaults = { correctOutcome: 3, exactScoreBonus: 2, minimumPredictions: 5, weeklyBudgetNaira: 15000 }
+export function SettingsPanel() { const [value, setValue] = useState<any>(null); const [error, setError] = useState(''); const [saved, setSaved] = useState(false); async function load() { const r = await fetch('/api/admin/settings'); const b = await r.json(); if (!r.ok) setError(b.error); else setValue(b.settings) } useEffect(() => { void load() }, []); async function save() { const r = await fetch('/api/admin/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) }); const b = await r.json(); if (!r.ok) setError(b.error ?? Object.values(b.fieldErrors ?? {}).join(', ')); else { setSaved(true); void load() } } if (!value) return <p className="text-sm text-muted-foreground">Loading settings…</p>; return <section className="max-w-2xl space-y-4"><div><h2 className="font-display text-2xl font-bold">Settings</h2><p className="text-sm text-muted-foreground">Values load from app_config. Reset only fills the form.</p></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}{saved && <p className="text-sm text-emerald-500">Saved.</p>}<div className="grid gap-3 rounded-xl border p-4 sm:grid-cols-2">{Object.entries(defaults).map(([key, fallback]) => <label className="text-sm" key={key}>{key}<input className="mt-1 block h-9 w-full rounded-lg border bg-background px-3" type="number" value={value[key] ?? ''} onChange={e => setValue({ ...value, [key]: Number(e.target.value) })}/></label>)}<div className="flex gap-2 sm:col-span-2"><Button variant="outline" onClick={() => setValue({ ...value, ...defaults })}>Reset to defaults</Button><Button onClick={save}>Save</Button></div></div></section> }
