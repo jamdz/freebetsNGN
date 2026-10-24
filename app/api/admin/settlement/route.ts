@@ -1,10 +1,2 @@
-import { NextResponse } from 'next/server'
-import { requireAdminApi } from '@/lib/admin-api'
-
-export async function GET() {
-  const auth = await requireAdminApi()
-  if ('response' in auth) return auth.response
-  const { data, error } = await auth.supabase.from('fixtures').select('id,status,kickoff_at,home_score,away_score,competition_id,home_team_id,away_team_id,competitions(name),home_team:teams!fixtures_home_team_id_fkey(name),away_team:teams!fixtures_away_team_id_fkey(name),predictions(count)').in('status', ['scheduled','live','finished']).order('kickoff_at')
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ fixtures: data ?? [] })
-}
+import { requireAdminApi, serverError } from '@/lib/admin-api'
+export async function GET() { const auth = await requireAdminApi(); if ('response' in auth) return auth.response; const past = new Date().toISOString(); const recent = new Date(Date.now() - 14 * 86400000).toISOString(); const { data, error } = await auth.supabase.from('fixtures').select('id,kickoff_at,status,home_goals,away_goals,competitions(name),home:teams!fixtures_home_team_id_fkey(name),away:teams!fixtures_away_team_id_fkey(name),predictions(user_id,result,points_awarded)').or(`and(status.in.(scheduled,live),kickoff_at.lte.${past}),and(status.eq.finished,kickoff_at.gte.${recent})`).order('kickoff_at', { ascending: false }); if (error) { console.error('[admin] settlement list', error); return serverError() } return Response.json({ fixtures: (data ?? []).map((row: any) => ({ ...row, prediction_count: row.predictions?.length ?? 0, exact: row.predictions?.filter((p: any) => p.result === 'exact').length ?? 0, correct: row.predictions?.filter((p: any) => p.result === 'correct').length ?? 0, wrong: row.predictions?.filter((p: any) => p.result === 'wrong').length ?? 0, total_points: row.predictions?.reduce((sum: number, p: any) => sum + Number(p.points_awarded ?? 0), 0) ?? 0 })) }) }

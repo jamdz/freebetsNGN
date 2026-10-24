@@ -1,21 +1,15 @@
-import { NextResponse } from 'next/server'
-import { requireAdminApi, writeAudit } from '@/lib/admin-api'
+import { z } from 'zod'
+import { requireAdminApi, serverError, writeAudit } from '@/lib/admin-api'
 
-export async function GET() {
-  const auth = await requireAdminApi()
-  if ('response' in auth) return auth.response
-  const { data, error } = await auth.supabase.from('app_config').select('config').eq('id', 1).maybeSingle()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ settings: data?.config ?? null })
-}
-
-export async function PUT(request: Request) {
-  const auth = await requireAdminApi()
-  if ('response' in auth) return auth.response
-  const body = await request.json().catch(() => null)
-  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid settings payload' }, { status: 400 })
-  const { data, error } = await auth.supabase.from('app_config').upsert({ id: 1, config: body }, { onConflict: 'id' }).select('config').single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  await writeAudit(auth.supabase, 'save_settings', 'app_config', '1')
-  return NextResponse.json({ settings: data.config })
-}
+const settingsSchema = z.object({
+  points: z.object({ correctOutcome: z.number().int().min(0).max(50), exactScoreBonus: z.number().int().min(0).max(50), boosterMultiplier: z.number().int().min(1).max(5), wrong: z.literal(0) }).strict(),
+  boosters: z.object({ perWeek: z.number().int().min(0).max(5), bonusPerStreak: z.number().int().min(0).max(5) }).strict(),
+  streak_days: z.number().int().min(1).max(30),
+  prize_tiers: z.array(z.object({ rank: z.number().int().min(1), naira: z.number().positive() }).strict()).min(1),
+  minimum_predictions: z.number().int().min(0).max(100),
+  qualification_rules: z.object({ minActiveDays: z.number().int().min(1).max(7), minPredictionsPerActiveDay: z.number().int().min(1).max(50), minFixturesForDayToCount: z.number().int().min(0).max(50), withdrawalRequiresQualification: z.boolean() }).strict(),
+  weekly_budget_naira: z.number().nonnegative(), prizes_paused: z.boolean(), confirm_budget_override: z.boolean().optional(),
+}).strict().superRefine((value, ctx) => { const ranks = value.prize_tiers.map((tier) => tier.rank); if (new Set(ranks).size !== ranks.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['prize_tiers'], message: 'Ranks must be unique' }); const sorted = [...value.prize_tiers].sort((a, b) => a.rank - b.rank); if (sorted.some((tier, index) => index > 0 && tier.naira > sorted[index - 1].naira)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['prize_tiers'], message: 'Amounts must be non-increasing' }); if (!value.confirm_budget_override && value.weekly_budget_naira < value.prize_tiers.reduce((sum, tier) => sum + tier.naira, 0)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['weekly_budget_naira'], message: 'Budget is below prize tiers' }) })
+const columns = 'id,points,boosters,streak_days,prize_tiers,minimum_predictions,qualification_rules,withdrawal_rules,general_referral_rules,weekly_budget_naira,prizes_paused'
+export async function GET() { const auth = await requireAdminApi(); if ('response' in auth) return auth.response; const { data, error } = await auth.supabase.from('app_config').select(columns).eq('id', true).maybeSingle(); if (error) return serverError(); return Response.json({ settings: data }) }
+export async function PUT(request: Request) { const auth = await requireAdminApi(); if ('response' in auth) return auth.response; const parsed = settingsSchema.safeParse(await request.json().catch(() => null)); if (!parsed.success) return Response.json({ error: 'Invalid settings', issues: parsed.error.issues }, { status: 400 }); const { confirm_budget_override: _, ...settings } = parsed.data; const { data, error } = await auth.supabase.from('app_config').update(settings).eq('id', true).select(columns).single(); if (error) { console.error('[admin] settings', error); return serverError() } await writeAudit(auth.supabase, 'save_settings', 'app_config', 'true', { prizes_paused: settings.prizes_paused }); return Response.json({ settings: data }) }

@@ -1,5 +1,14 @@
-import { badRequest, requireAdminApi, serverError, writeAudit } from '@/lib/admin-api'
+import { z } from 'zod'
+import { requireAdminApi, serverError, writeAudit } from '@/lib/admin-api'
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) { const auth = await requireAdminApi(); if ('response' in auth) return auth.response; try { const id = (await params).id; const body = await request.json(); if (!['suspended','banned','active'].includes(body.status)) return badRequest('status must be suspended, banned, or active'); const { error } = await auth.supabase.from('profiles').update({ status: body.status }).eq('id', id); if (error) throw error; await writeAudit(auth.supabase, `${body.status === 'active' ? 'reactivate' : body.status}_user`, 'profile', id, { reason: body.reason ?? null }); return Response.json({ ok: true }) } catch (error) { console.error('[admin] user status', error); return serverError() } }
-
-export async function GET() { const auth = await requireAdminApi(); if ('response' in auth) return auth.response; const { data, error } = await auth.supabase.from('profiles').select('id,nickname,phone,email,status,created_at').order('created_at', { ascending: false }); if (error) return serverError(); return Response.json({ users: data ?? [] }) }
+const schema = z.object({ status: z.enum(['active', 'suspended', 'banned']), reason: z.string().trim().min(3).optional() }).strict()
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdminApi(); if ('response' in auth) return auth.response
+  const id = (await params).id
+  const parsed = schema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success || ((parsed.data?.status === 'suspended' || parsed.data?.status === 'banned') && !parsed.data.reason)) return Response.json({ error: 'Invalid status change', issues: parsed.success ? [{ path: ['reason'], message: 'Reason is required' }] : parsed.error.issues }, { status: 400 })
+  const { data, error } = await auth.supabase.from('profiles').update({ status: parsed.data.status }).eq('id', id).select('id,status').single()
+  if (error) { console.error('[admin] user status', error); return serverError() }
+  await writeAudit(auth.supabase, `${parsed.data.status}_user`, 'profile', id, { reason: parsed.data.reason ?? null })
+  return Response.json({ user: data })
+}

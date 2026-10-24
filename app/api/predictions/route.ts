@@ -28,8 +28,13 @@ export async function POST(request: Request) {
   const { data: gameweek } = await admin.from('gameweeks').select('id').lte('starts_at', fixture.kickoff_at).gt('ends_at', fixture.kickoff_at).maybeSingle()
   if (!gameweek) return response('Invalid request', 400)
   if (parsed.data.booster) {
-    const { count } = await admin.from('predictions').select('fixture_id', { count: 'exact', head: true }).eq('user_id', user.id).eq('gameweek_id', gameweek.id).eq('booster', true).neq('fixture_id', fixture.id)
-    if ((count ?? 0) >= 1) return response('Booster already used this week', 409)
+    const [{ data: config }, { data: profile }] = await Promise.all([
+      admin.from('app_config').select('boosters').eq('id', true).maybeSingle(),
+      admin.from('profiles').select('boosters_bonus').eq('id', user.id).maybeSingle(),
+    ])
+    const perWeek = Math.max(0, Number(config?.boosters?.perWeek ?? 0) + Number(profile?.boosters_bonus ?? 0))
+    const { count } = await admin.from('predictions').select('fixture_id', { count: 'exact', head: true }).eq('user_id', user.id).eq('gameweek_id', gameweek.id).eq('booster', true).neq('result', 'void').neq('fixture_id', fixture.id)
+    if ((count ?? 0) >= perWeek) return response('Booster already used this week', 409)
   }
   const { data, error } = await admin.from('predictions').upsert({ user_id: user.id, fixture_id: fixture.id, gameweek_id: gameweek.id, outcome: parsed.data.outcome, home_goals: parsed.data.homeGoals ?? null, away_goals: parsed.data.awayGoals ?? null, booster: parsed.data.booster, updated_at: new Date().toISOString() }, { onConflict: 'user_id,fixture_id' }).select('fixture_id,outcome,home_goals,away_goals,booster,points_awarded,result').single()
   if (error) return response('Invalid request', 400)
