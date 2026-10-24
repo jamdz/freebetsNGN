@@ -1,21 +1,4 @@
-import { NextResponse } from 'next/server'
-import { requireAdminApi, writeAudit } from '@/lib/admin-api'
+import { requireAdminApi, serverError, writeAudit } from '@/lib/admin-api'
 
-export async function GET() {
-  const auth = await requireAdminApi()
-  if ('response' in auth) return auth.response
-  const { data, error } = await auth.supabase.from('app_config').select('config').eq('id', 1).maybeSingle()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ settings: data?.config ?? null })
-}
-
-export async function PUT(request: Request) {
-  const auth = await requireAdminApi()
-  if ('response' in auth) return auth.response
-  const body = await request.json().catch(() => null)
-  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid settings payload' }, { status: 400 })
-  const { data, error } = await auth.supabase.from('app_config').upsert({ id: 1, config: body }, { onConflict: 'id' }).select('config').single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  await writeAudit(auth.supabase, 'save_settings', 'app_config', '1')
-  return NextResponse.json({ settings: data.config })
-}
+export async function GET() { const auth = await requireAdminApi(); if ('response' in auth) return auth.response; const { data, error } = await auth.supabase.from('app_config').select('id,points,boosters,streak_days,prize_tiers,minimum_predictions,qualification_rules,withdrawal_rules,general_referral_rules,weekly_budget_naira,prizes_paused').eq('id', true).maybeSingle(); if (error) return serverError(); return Response.json({ settings: data }) }
+export async function PUT(request: Request) { const auth = await requireAdminApi(); if ('response' in auth) return auth.response; try { const body = await request.json(); const allowed = ['points','boosters','streak_days','prize_tiers','minimum_predictions','qualification_rules','withdrawal_rules','general_referral_rules','weekly_budget_naira','prizes_paused']; const patch = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key))); const { data, error } = await auth.supabase.from('app_config').update(patch).eq('id', true).select('id').single(); if (error) throw error; await writeAudit(auth.supabase, 'save_settings', 'app_config', 'true', patch); return Response.json({ settings: data }) } catch (error) { console.error('[admin] save settings', error); return serverError() } }
