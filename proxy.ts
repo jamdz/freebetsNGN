@@ -3,7 +3,7 @@ import { updateSession } from '@/lib/supabase/proxy'
 
 const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/terms', '/privacy', '/prize-rules', '/responsible-play']
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const configuredPath = process.env.ADMIN_PATH?.trim() || 'ops-x7k2p'
   const adminPath = `/${configuredPath.replace(/^\/+|\/+$/g, '')}`
