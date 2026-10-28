@@ -3,6 +3,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 let client: SupabaseClient | undefined
 export function createClient() {
-  if (!client) client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+  if (!client) client = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookieOptions: { sameSite: 'none', secure: true } })
   return client
 }
