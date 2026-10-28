@@ -23,4 +23,4 @@ export function createAdminSession(email: string) { const value = `${email.trim(
 export function verifyAdminSession(value?: string | null) { if (!isAdminConfigured() || !value) return false; const parts = value.split('.'); if (parts.length < 4) return false; const timestamp = Number(parts[parts.length - 3]); const signature = parts[parts.length - 1]; const signed = parts.slice(0, -1).join('.'); return Number.isFinite(timestamp) && Date.now() - timestamp < SESSION_TTL && validSignature(signed, signature) }
 export async function hasAdminSession() { return verifyAdminSession((await cookies()).get(ADMIN_COOKIE)?.value) }
 export async function requireAdminSession() { if (!(await hasAdminSession())) throw new Error('UNAUTHORIZED') }
-export const adminCookieOptions = { httpOnly: true, secure: true, sameSite: 'none' as const, path: '/', maxAge: SESSION_TTL / 1000 }
+export const adminCookieOptions = { httpOnly: true, secure: true, sameSite: 'none' as const, path: '/', partitioned: true, maxAge: SESSION_TTL / 1000 }

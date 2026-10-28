@@ -9,8 +9,8 @@ type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (dat
 const AuthContext = createContext<AuthContextValue | null>(null)
 const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/terms', '/privacy', '/prize-rules', '/responsible-play']
 
-async function loadStatus() {
-  const response = await fetch('/api/auth/status', { cache: 'no-store' })
+async function loadStatus(accessToken?: string) {
+  const response = await fetch('/api/auth/status', { cache: 'no-store', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined })
   if (!response.ok) return null
   const { user } = await response.json()
   return { ...user, emailVerified: user.email_verified, phoneVerified: user.phone_verified, streakCount: user.streak_count }
@@ -21,12 +21,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)
   const router = useRouter(); const pathname = usePathname(); const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
   const getSupabase = () => { if (!supabaseRef.current) supabaseRef.current = createClient(); return supabaseRef.current }
-  const refreshUser = async () => { const next = await loadStatus(); setUser(next); return next }
+  const refreshUser = async (accessToken?: string) => { const next = await loadStatus(accessToken); setUser(next); return next }
   useEffect(() => { let mounted = true; getSupabase().auth.getSession().then(async ({ data }) => { if (mounted && data.session) await refreshUser(); if (mounted) setReady(true) }); const { data: subscription } = getSupabase().auth.onAuthStateChange(async (event, session) => { if (!mounted) return; if (session) await refreshUser(); else setUser(null); setReady(true) }); return () => { mounted = false; subscription.subscription.unsubscribe() } }, [])
   useEffect(() => { if (!ready) return; const isPublic = publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)); const isAdminRoute = /^\/freebetngn\/folder\/admin(?:\/|$)/i.test(pathname); if (!user && !isPublic && !isAdminRoute) router.replace('/login'); if (user && ['/login','/signup'].includes(pathname)) router.replace('/home') }, [pathname, ready, user, router])
   const recordVisit = () => { const key = `freebet-visit-${lagosDate(new Date())}`; if (sessionStorage.getItem(key)) return; void fetch('/api/visit', { method: 'POST' }).then((response) => { if (response.ok) sessionStorage.setItem(key, '1') }) }
   const signUp = async (data: Credentials) => { const { error } = await getSupabase().auth.signUp({ email: data.email!, password: data.password!, options: { emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`, data: { nickname: data.nickname, phone: data.phone, referralCode: data.referralCode || null } } }); if (error) throw new Error(error.message.includes('rate') ? 'Too many attempts. Please try again later.' : 'Unable to create account. Check your details and try again.'); router.push('/verify') }
-  const signIn = async (data: Credentials) => { const resolve = await fetch('/api/auth/resolve-identifier', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identifier: data.nickname }) }); if (!resolve.ok) return false; const details = await resolve.json(); if (details.status === 'banned' || details.status === 'suspended') return false; const { error } = await getSupabase().auth.signInWithPassword({ email: details.email, password: data.password! }); if (error) return false; const next = await refreshUser(); if (!next) { await getSupabase().auth.signOut(); return false } recordVisit(); router.push('/home'); return true }
+  const signIn = async (data: Credentials) => { const resolve = await fetch('/api/auth/resolve-identifier', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identifier: data.nickname }) }); if (!resolve.ok) return false; const details = await resolve.json(); if (details.status === 'banned' || details.status === 'suspended') return false; const { error } = await getSupabase().auth.signInWithPassword({ email: details.email, password: data.password! }); if (error) return false; const { data: { session } } = await getSupabase().auth.getSession(); const next = await refreshUser(session?.access_token); if (!next) { await getSupabase().auth.signOut(); return false } recordVisit(); router.push('/home'); return true }
   const signOut = async () => { await getSupabase().auth.signOut(); setUser(null); router.replace('/login') }
   const verifyOtp = async (otp: string) => { if (otp !== '123456') return false; const response = await fetch('/api/auth/verify-phone', { method: 'POST' }); if (!response.ok) return false; await refreshUser(); router.push('/home'); return true }
   const verifyEmail = async () => { await refreshUser() }

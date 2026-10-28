@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function GET() {
+export async function GET(request: Request) {
+  const bearer = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = bearer ? await createAdminClient().auth.getUser(bearer) : await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const admin = createAdminClient()
   const { data: profile } = await admin.from('profiles').select('id,nickname,email,phone,email_verified,phone_verified,status,deactivated_at,streak_count,last_visit_date,boosters_bonus').eq('id', user.id).maybeSingle()
