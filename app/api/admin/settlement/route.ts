@@ -1,20 +1,17 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi, serverError } from '@/lib/admin-api'
 import { buildPagination, parsePagination } from '@/lib/admin-pagination'
+import { getLagosDateRange, parseLagosYearMonth } from '@/lib/admin-date-filters'
 
 const tabs = ['awaiting', 'settled', 'void'] as const
 type Tab = typeof tabs[number]
-const lagosBoundary = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}-01T00:00:00+01:00`
 
 export async function GET(request: Request) {
   const auth = await requireAdminApi()
   if ('response' in auth) return auth.response
   const url = new URL(request.url)
   const tab = tabs.includes(url.searchParams.get('tab') as Tab) ? url.searchParams.get('tab') as Tab : 'awaiting'
-  const yearValue = Number(url.searchParams.get('year'))
-  const monthValue = Number(url.searchParams.get('month'))
-  const year = Number.isInteger(yearValue) && yearValue >= 2000 && yearValue <= 2200 ? yearValue : null
-  const month = year && Number.isInteger(monthValue) && monthValue >= 1 && monthValue <= 12 ? monthValue : null
+  const { year, month } = parseLagosYearMonth(url.searchParams)
   const gameweekId = url.searchParams.get('gameweek_id') || null
   const competitionId = url.searchParams.get('competition_id') || null
   const pagination = parsePagination(url.searchParams, { defaultSize: 10, allowed: [10, 25, 50] })
@@ -25,8 +22,9 @@ export async function GET(request: Request) {
     if (!data) return NextResponse.json({ fixtures: [], counts: { awaiting: 0, settled: 0, void: 0 }, pagination: buildPagination(pagination.page, pagination.pageSize, 0) })
     start = data.starts_at; end = data.ends_at
   } else if (year) {
-    start = lagosBoundary(year, month ?? 1)
-    end = month ? lagosBoundary(month === 12 ? year + 1 : year, month === 12 ? 1 : month + 1) : lagosBoundary(year + 1, 1)
+    const range = getLagosDateRange(year, month ?? undefined)
+    start = range.start
+    end = range.end
   }
   const applyFilters = (query: any) => {
     if (start) query = query.gte('kickoff_at', start)
