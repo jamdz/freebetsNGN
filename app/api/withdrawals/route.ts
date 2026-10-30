@@ -1,20 +1,9 @@
 import { NextResponse } from 'next/server'
-import { MIN_AIRTIME_WITHDRAWAL_NAIRA, WITHDRAWAL_RULES } from '@/lib/config'
-import { getMockWithdrawalState, getMockWithdrawalMethodState, setMockWithdrawalMethodPending } from '@/lib/mock-store'
-
-const phonePattern = /^(?:\+234|0)(?:70|80|81|90|91)\d{8}$/
-const bankPattern = /^\d{10}$/
-export async function POST(request: Request) {
-  const body = await request.json().catch(() => null)
-  const method = body?.method === 'bank' ? 'bank' : 'airtime'
-  if (getMockWithdrawalMethodState(method)) return NextResponse.json({ error: `You already have a pending ${method} withdrawal request.` }, { status: 409 })
-  const amount = Number(body?.amount)
-  const state = getMockWithdrawalState()
-  const minimum = method === 'bank' ? WITHDRAWAL_RULES.minCashWithdrawalNaira : MIN_AIRTIME_WITHDRAWAL_NAIRA
-  if (!Number.isInteger(amount) || amount < minimum) return NextResponse.json({ error: `Minimum ${method} withdrawal is ₦${minimum}.` }, { status: 400 })
-  if (amount > state.rewardBalanceNaira) return NextResponse.json({ error: 'Insufficient withdrawable balance.' }, { status: 400 })
-  if (method === 'airtime' && !phonePattern.test(String(body?.phoneNumber ?? '').replace(/\s/g, ''))) return NextResponse.json({ error: 'Enter a valid Nigerian mobile number.' }, { status: 400 })
-  if (method === 'bank' && (!bankPattern.test(String(body?.accountNumber ?? '')) || !body?.accountName)) return NextResponse.json({ error: 'Verify a valid 10-digit account and confirm the account name.' }, { status: 400 })
-  setMockWithdrawalMethodPending(method, true)
-  return NextResponse.json({ id: `wd_${Date.now()}`, reference: `FBT-${Date.now().toString().slice(-6)}`, status: 'pending', expected: method === 'bank' ? 'within 24 hours' : 'within minutes' }, { status: 201 })
-}
+import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { buildPagination, parsePagination } from '@/lib/admin-pagination'
+const schema=z.object({method:z.enum(['airtime','bank']),amount:z.number().int().positive(),network:z.enum(['MTN','Airtel','Glo','9mobile']).optional(),phone_number:z.string().optional(),bank_name:z.string().optional(),account_number:z.string().optional(),account_name:z.string().optional(),name_match:z.boolean().optional()})
+const phone=/^(?:0(?:70|80|81|90|91)\d{8}|\+234(?:70|80|81|90|91)\d{8})$/
+export async function GET(request:Request){const supabase=await createClient();const {data:{user}}=await supabase.auth.getUser();if(!user)return NextResponse.json({error:'Unauthorized'},{status:401});const {page,pageSize,from,to}=parsePagination(new URL(request.url).searchParams,{defaultSize:10,allowed:[10,25,50]});const {data,count,error}=await supabase.from('withdrawals').select('id,method,amount,fee,status,reference,created_at,reason,expected_at',{count:'exact'}).eq('user_id',user.id).order('created_at',{ascending:false}).range(from,to);if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json({withdrawals:data??[],pagination:buildPagination(page,pageSize,count??0)})}
+export async function POST(request:Request){const supabase=await createClient();const {data:{user}}=await supabase.auth.getUser();if(!user)return NextResponse.json({error:'Unauthorized'},{status:401});const key=request.headers.get('Idempotency-Key');if(!key)return NextResponse.json({error:'Idempotency-Key is required.'},{status:400});const input=await request.json().catch(()=>null);const body=schema.safeParse(input);if(!body.success)return NextResponse.json({error:'Invalid withdrawal request.'},{status:400});if(body.data.method==='airtime'&&(!body.data.network||!body.data.phone_number||!phone.test(body.data.phone_number.replace(/\s/g,''))))return NextResponse.json({error:'Enter a valid Nigerian mobile number and network.'},{status:400});if(body.data.method==='bank'&&(!/^\d{10}$/.test(body.data.account_number??'')||!body.data.bank_name||!body.data.account_name||body.data.name_match!==true))return NextResponse.json({error:'Verify and confirm the bank account before withdrawing.'},{status:400});const {data,error}=await supabase.rpc('create_withdrawal',{p_user_id:user.id,p_method:body.data.method,p_amount:body.data.amount,p_network:body.data.network??null,p_phone_number:body.data.phone_number??null,p_bank_name:body.data.bank_name??null,p_account_number:body.data.account_number??null,p_account_name:body.data.account_name??null,p_idempotency_key:key});if(error)return NextResponse.json({error:error.message},{status:409});const result=Array.isArray(data)?data[0]:data;return NextResponse.json({id:result?.id,reference:result?.reference,status:result?.status,expected:result?.expected},{status:201})}

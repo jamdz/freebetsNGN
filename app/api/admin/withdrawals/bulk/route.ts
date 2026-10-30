@@ -1,0 +1,3 @@
+import { NextResponse } from 'next/server'
+import { requireAdminApi } from '@/lib/admin-api'
+export async function POST(request:Request){const auth=await requireAdminApi();if('response'in auth)return auth.response;const body=await request.json().catch(()=>null);if(!Array.isArray(body?.ids)||body.ids.length>50||body.action!=='approve')return NextResponse.json({error:'Up to 50 ids and approve are required.'},{status:400});const results=[];for(const id of body.ids){const result=await auth.supabase.rpc('admin_update_withdrawal',{p_withdrawal_id:id,p_action:'approve',p_reference:null,p_reason:null,p_admin:process.env.ADMIN_EMAIL});results.push({id,ok:!result.error,error:result.error?.message})}return NextResponse.json({results})}
