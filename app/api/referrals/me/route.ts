@@ -1,0 +1,18 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { buildPagination, parsePagination } from '@/lib/admin-pagination'
+
+export async function GET(request: Request) {
+  const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const admin = createAdminClient(); const params = new URL(request.url).searchParams; const { page, pageSize, from, to } = parsePagination(params, { defaultSize: 10, allowed: [10, 25, 50] }); const program = params.get('program'); const status = params.get('status')
+  const [{ data: state }, { data: campaigns }, { data: rows, count, error }] = await Promise.all([admin.from('referral_program_state').select('general_enabled,general_locked').maybeSingle(), admin.from('promo_campaigns').select('name,code,registered_count,target_registrations,reward_naira,status').eq('status', 'active').maybeSingle(), (() => { let q = admin.from('referrals').select('id,program,active_days,predictions_count,reward_naira,status,signup_at,referred:profiles!referrals_referred_id_fkey(nickname)', { count: 'exact' }).eq('referrer_id', user.id).order('signup_at', { ascending: false }).range(from, to); if (program) q = q.eq('program', program); if (status) q = q.eq('status', status); return q })()])
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const generalCode = String(user.user_metadata?.referralCode ?? '').trim().toUpperCase(); const campaign = campaigns; const campaignCode = campaign?.code; const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin
+  const mask = (value: string | null) => value ? `${value.slice(0, 3)}***` : '***'
+  const logs = (rows ?? []).map((row: any) => ({ id: row.id, program: row.program, friend: mask(row.referred?.nickname ?? row.referred?.[0]?.nickname), active_days: row.active_days, predictions_count: row.predictions_count, reward_naira: row.reward_naira, status: row.status, signup_at: row.signup_at }))
+  const referralRows = rows ?? []; const generalRows = referralRows.filter((row: any) => row.program === 'general'); const promoRows = referralRows.filter((row: any) => row.program !== 'general')
+  const sums = (list: any[], statuses: string[]) => list.filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + Number(row.reward_naira ?? 0), 0)
+  const { data: ledger } = campaignCode ? await admin.from('wallet_ledger').select('amount_naira,status').eq('user_id', user.id).eq('type', 'referral_promo') : { data: [] }
+  return NextResponse.json({ program: { general_enabled: state?.general_enabled ?? false, general_locked: state?.general_locked ?? true }, general: { code: generalCode, link: `${origin}/join?ref=${encodeURIComponent(generalCode)}`, balances: { in_progress: sums(generalRows, ['in_progress']), credited: sums(generalRows, ['credited']), paid: sums(generalRows, ['paid']) }, logs: logs.filter((row) => row.program === 'general') }, promo: { campaign: campaign ? { name: campaign.name, code: campaign.code, registered_count: campaign.registered_count, target_registrations: campaign.target_registrations, reward_naira: campaign.reward_naira, status: campaign.status } : null, link: campaignCode ? `${origin}/join?ref=${encodeURIComponent(generalCode)}&campaign=${encodeURIComponent(campaignCode)}` : null, balances: { pending: sums(ledger ?? [], ['pending']), available: sums(ledger ?? [], ['available']) }, logs: logs.filter((row) => row.program !== 'general') }, past_campaigns: [], pagination: buildPagination(page, pageSize, count ?? 0) })
+}

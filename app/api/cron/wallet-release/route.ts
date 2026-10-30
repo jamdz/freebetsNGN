@@ -14,5 +14,7 @@ export async function GET(request: NextRequest) {
   const now = new Date().toISOString()
   const { data, error } = await supabase.from('wallet_ledger').update({ status: 'available' }).eq('status', 'pending').not('available_at', 'is', null).lte('available_at', now).select('id')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ released: data?.length ?? 0, releasedAt: now })
+  const { data: evaluated, error: referralError } = await supabase.rpc('evaluate_general_referrals')
+  if (referralError) return NextResponse.json({ error: referralError.message }, { status: 500 })
+  return NextResponse.json({ released: data?.length ?? 0, referralsEvaluated: evaluated ?? 0, releasedAt: now })
 }

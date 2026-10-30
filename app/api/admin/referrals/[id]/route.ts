@@ -1,0 +1,4 @@
+import { z } from 'zod'
+import { requireAdminApi, writeAudit, badRequest, serverError } from '@/lib/admin-api'
+const schema=z.object({action:z.enum(['approve','reject']),reason:z.string().max(500).optional()})
+export async function PATCH(request:Request,{params}:{params:Promise<{id:string}>}){const auth=await requireAdminApi();if('response'in auth)return auth.response;const id=(await params).id;const parsed=schema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return badRequest('Invalid referral action');const {data,error}=await auth.supabase.rpc('admin_set_referral',{p_referral_id:id,p_action:parsed.data.action,p_reason:parsed.data.reason??null});if(error)return serverError(error.message);await writeAudit(auth.supabase,`${parsed.data.action}_referral`,'referral',id,{reason:parsed.data.reason??null});return Response.json({referral:data})}
