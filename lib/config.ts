@@ -17,7 +17,6 @@ export const WEEKLY_PRIZE_TIERS = [
   { rank: 10, prizeNaira: 100 },
 ] as const
 export const MIN_AIRTIME_WITHDRAWAL_NAIRA = 100
-export const SPIN_EVENT = { name: 'Lucky Kickoff Spin', status: 'live', startsAt: null, endsAt: '2026-10-21T23:59:00+01:00', maxSpinsPerUser: 1, prizeBudgetNaira: 250000 } as const
 export const WITHDRAWAL_RULES = { minCashWithdrawalNaira: 2000, cashFeeNaira: 0, bankAccountChangeCooldownDays: 7, onePendingRequestAtATime: true } as const
 export const OFFER_HOLD_DAYS = 7
 export const REFERRAL_BONUS_NAIRA = 50

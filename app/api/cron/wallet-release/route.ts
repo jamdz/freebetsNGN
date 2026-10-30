@@ -16,5 +16,7 @@ export async function GET(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const { data: evaluated, error: referralError } = await supabase.rpc('evaluate_general_referrals')
   if (referralError) return NextResponse.json({ error: referralError.message }, { status: 500 })
-  return NextResponse.json({ released: data?.length ?? 0, referralsEvaluated: evaluated ?? 0, releasedAt: now })
+  const { data: spinTick, error: spinError } = await supabase.rpc('spin_tick')
+  if (spinError) return NextResponse.json({ error: spinError.message }, { status: 500 })
+  return NextResponse.json({ released: data?.length ?? 0, referralsEvaluated: evaluated ?? 0, spinTick, releasedAt: now })
 }
