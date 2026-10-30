@@ -1,0 +1,4 @@
+import { NextResponse } from 'next/server'
+import { requireAdminApi } from '@/lib/admin-api'
+import { buildPagination, parsePagination } from '@/lib/admin-pagination'
+export async function GET(request:Request,{params}:{params:Promise<{key:string}>}){const auth=await requireAdminApi();if('response'in auth)return auth.response;const {page,pageSize,from,to}=parsePagination(new URL(request.url).searchParams,{defaultSize:20,allowed:[20]});const key=(await params).key;const {data,count,error}=await auth.supabase.from('integration_logs').select('id,created_at,event_type,response_status,latency_ms,success,error_message,response_summary',{count:'exact'}).eq('provider',key).order('created_at',{ascending:false}).range(from,to);if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json({logs:data??[],pagination:buildPagination(page,pageSize,count??0)})}
