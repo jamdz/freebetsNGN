@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const supabase = createAdminClient()
   const { data: gameweek, error: gameweekError } = await supabase.from('gameweeks').select('id, starts_at, ends_at').lte('starts_at', new Date().toISOString()).gt('ends_at', new Date().toISOString()).order('starts_at', { ascending: false }).limit(1).maybeSingle()
   if (gameweekError) return NextResponse.json({ error: gameweekError.message }, { status: 500 })
-  if (!gameweek) { await processNotificationOutbox(); return NextResponse.json({ message: 'No current gameweek', processed: 0 }) }
+  if (!gameweek) { const notifications = await processNotificationOutbox(25); return NextResponse.json({ message: 'No current gameweek', processed: 0, notifications }) }
   const { data: profiles, error: profilesError } = await supabase.from('profiles').select('id').eq('status', 'active')
   if (profilesError) return NextResponse.json({ error: profilesError.message }, { status: 500 })
   let processed = 0
@@ -23,6 +23,6 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message, processed }, { status: 500 })
     processed += 1
   }
-  await processNotificationOutbox()
-  return NextResponse.json({ gameweekId: gameweek.id, processed })
+  const notifications = await processNotificationOutbox(25)
+  return NextResponse.json({ gameweekId: gameweek.id, processed, notifications })
 }
