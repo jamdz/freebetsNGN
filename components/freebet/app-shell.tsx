@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { formatNaira } from '@/lib/format'
 import { APP_NAME, NAV_ITEMS } from '@/lib/config'
 import { useAuth } from '@/components/auth-provider'
+import { AdManager } from '@/components/ads/AdManager'
 
 const navIcons = { Home, Fixtures: ListChecks, Leaderboard: Medal, Rewards: Gift, Profile: UserRound }
 const navRoutes = { Home: '/home', Fixtures: '/fixtures', Leaderboard: '/leaderboard', Rewards: '/rewards', Profile: '/profile' }
@@ -50,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto min-h-[calc(100vh-4rem)] min-w-0 max-w-6xl px-4 pb-24 pt-5 md:pb-8">{children}</main>
+      <AdManager>{children}</AdManager>
 
       <footer className="mx-auto flex max-w-6xl flex-col gap-2 border-t border-border/60 px-4 py-6 pb-24 text-xs text-muted-foreground md:pb-6"><div className="flex flex-wrap gap-x-4 gap-y-2"><Link href="/terms" className="hover:text-foreground">Terms</Link><Link href="/privacy" className="hover:text-foreground">Privacy</Link><Link href="/prize-rules" className="hover:text-foreground">Prize rules</Link><Link href="/responsible-play" className="hover:text-foreground">Responsible play</Link></div><p>18+ only. No stakes involved. Not affiliated with any league, club or broadcaster.</p></footer>\n\n      <nav aria-label="Mobile primary navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         <div className="mx-auto flex max-w-md items-center justify-around py-2">

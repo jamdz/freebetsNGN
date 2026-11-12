@@ -1,17 +1,122 @@
 'use client'
-import { useMemo, useState } from 'react'
+
+import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { defaultAdSettings, type AdSettings, type AdPage } from '@/lib/ad-settings'
-import { recordAdminAudit } from '@/lib/admin-audit'
+import type { AdPage, AdSettings, AdSize, AdPlacementSlot } from '@/lib/ad-settings'
 
-export function AdsOffersPanel({ audit = (_action, _target) => recordAdminAudit('admin', _action, _target) }: { audit?: (action: string, target: string) => void }) {
-  const [settings, setSettings] = useState<AdSettings>(structuredClone(defaultAdSettings)); const [tab, setTab] = useState<'networks'|'placements'|'offerwall'|'reporting'>('networks'); const [saved, setSaved] = useState(false)
-  const update = (fn: (draft: AdSettings) => void) => { const next = structuredClone(settings); fn(next); setSettings(next); setSaved(false) }
-  const save = () => { audit('save_ads_settings', tab); setSaved(true) }
-  const pages = Object.entries(settings.placements) as [AdPage, AdSettings['placements'][AdPage]][]
-  const served = useMemo(() => pages.reduce((sum, [, page]) => sum + page.slots.length * (page.enabled ? 184 : 0), 0), [pages])
-  return <div className="flex flex-col gap-5"><div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">Preview only: changes here are not saved yet.</div><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Admin console</p><h1 className="mt-1 font-display text-2xl font-bold">Ads and Offers</h1><p className="mt-1 text-sm text-muted-foreground">Settings-driven placements with consent, fixed-height slots, and no reward incentives.</p></div><Button onClick={save}>{saved ? 'Saved' : 'Save changes'}</Button></div><div className="flex flex-wrap gap-2">{(['networks','placements','offerwall','reporting'] as const).map((item) => <Button key={item} variant={tab === item ? 'default' : 'outline'} onClick={() => setTab(item)}>{item[0].toUpperCase() + item.slice(1)}</Button>)}</div>{tab === 'networks' && <div className="grid gap-4 lg:grid-cols-2"><NetworkCard title="A-ADS" active={settings.networks.aads.active} onToggle={() => update((s) => { s.networks.aads.active = !s.networks.aads.active })}><p className="text-xs text-muted-foreground">Unit IDs are stored as settings and rendered only on enabled pages.</p>{(['320x100','300x250','728x90'] as const).map((size) => <input key={size} value={settings.networks.aads.units[size]} onChange={(e) => update((s) => { s.networks.aads.units[size] = e.target.value })} placeholder={`${size} unit ID`} className="h-9 rounded-lg border border-border bg-background px-3 text-sm" />)}</NetworkCard><NetworkCard title="Adsterra" active={settings.networks.adsterra.active} onToggle={() => update((s) => { s.networks.adsterra.active = !s.networks.adsterra.active })}><p className="text-xs text-muted-foreground">Paste snippets or URLs; scripts never load on disabled pages.</p>{(['320x100','300x250','728x90'] as const).map((size) => <textarea key={size} value={settings.networks.adsterra.banner[size]} onChange={(e) => update((s) => { s.networks.adsterra.banner[size] = e.target.value })} placeholder={`Banner ${size} snippet`} className="min-h-16 rounded-lg border border-border bg-background p-2 text-xs" />)}<input value={settings.networks.adsterra.smartlink} onChange={(e) => update((s) => { s.networks.adsterra.smartlink = e.target.value })} placeholder="Smartlink direct URL" className="h-9 rounded-lg border border-border bg-background px-3 text-sm" /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={settings.smartlink.earn} onChange={(e) => update((s) => { s.smartlink.earn = e.target.checked })} /> Sponsored card on Earn</label></NetworkCard><div className="rounded-xl border border-border/70 bg-card p-5 lg:col-span-2"><div className="flex items-center justify-between"><div><h2 className="font-display text-lg font-bold">Global controls</h2><p className="text-sm text-muted-foreground">Preview mode uses labeled boxes; popunders are off by default.</p></div><Badge variant={settings.previewMode ? 'secondary' : 'outline'}>{settings.previewMode ? 'Preview mode' : 'Live mode'}</Badge></div><div className="mt-4 flex flex-wrap gap-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={settings.previewMode} onChange={(e) => update((s) => { s.previewMode = e.target.checked })} /> Preview every slot</label><label className="flex items-center gap-2"><input type="checkbox" checked={settings.popunder.enabled} onChange={(e) => update((s) => { s.popunder.enabled = e.target.checked })} /> Enable popunder</label><input type="number" min={5} value={settings.popunder.frequencyMinutes} onChange={(e) => update((s) => { s.popunder.frequencyMinutes = Number(e.target.value) })} className="h-9 w-28 rounded-lg border border-border bg-background px-3" /></div><p className="mt-3 text-xs text-amber-400">Popunders can reduce retention and are restricted by some browsers and ad networks.</p></div></div>}{tab === 'placements' && <div className="rounded-xl border border-border/70 bg-card p-5"><div className="mb-4 flex justify-between gap-3"><div><h2 className="font-display text-lg font-bold">Per-page placement table</h2><p className="text-sm text-muted-foreground">Login, signup, auth, admin, dialogs, and result sheets are always excluded.</p></div><Button variant="outline" onClick={() => { setSettings(structuredClone(defaultAdSettings)); audit('reset_ads_defaults','all') }}>Reset to defaults</Button></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b border-border text-xs text-muted-foreground"><th className="p-3">Page</th><th className="p-3">Enabled</th><th className="p-3">Slots</th><th className="p-3">Preview</th></tr></thead><tbody>{pages.map(([page, config]) => <tr key={page} className="border-b border-border/50"><td className="p-3 font-semibold">{page}</td><td className="p-3"><input type="checkbox" checked={config.enabled} onChange={(e) => update((s) => { s.placements[page].enabled = e.target.checked })} /></td><td className="p-3"><select value={config.slots.length} onChange={(e) => update((s) => { const count = Math.min(5, Number(e.target.value)); s.placements[page].slots = Array.from({ length: count }, (_, i) => s.placements[page].slots[i] ?? { position: 'inline', network: 'A-ADS', size: '728x90' }) })} className="h-8 rounded border border-border bg-background px-2">{[0,1,2,3,4,5].map((n) => <option key={n}>{n}</option>)}</select></td><td className="p-3"><Badge variant="outline">{config.slots.map((slot) => `${slot.position} · ${slot.size}`).join(', ') || 'No slots'}</Badge></td></tr>)}</tbody></table></div></div>}{tab === 'offerwall' && <div className="grid gap-4 lg:grid-cols-2"><NetworkCard title="AdGem offerwall" active={settings.offerwall.active} onToggle={() => update((s) => { s.offerwall.active = !s.offerwall.active })}><input value={settings.offerwall.appId} onChange={(e) => update((s) => { s.offerwall.appId = e.target.value })} placeholder="App ID" className="h-9 rounded-lg border border-border bg-background px-3 text-sm" /><input value={settings.offerwall.embedUrl} onChange={(e) => update((s) => { s.offerwall.embedUrl = e.target.value })} placeholder="Embed URL with {userId}" className="h-9 rounded-lg border border-border bg-background px-3 text-sm" /><input value={settings.offerwall.postbackSecret} onChange={(e) => update((s) => { s.offerwall.postbackSecret = e.target.value })} placeholder="Postback secret (masked)" type="password" className="h-9 rounded-lg border border-border bg-background px-3 text-sm" /><div className="flex gap-2"><input type="number" value={settings.offerwall.rewardShare} onChange={(e) => update((s) => { s.offerwall.rewardShare = Number(e.target.value) })} className="h-9 w-24 rounded-lg border border-border bg-background px-3" /><input type="number" value={settings.offerwall.holdDays} onChange={(e) => update((s) => { s.offerwall.holdDays = Number(e.target.value) })} className="h-9 w-24 rounded-lg border border-border bg-background px-3" /><Button variant="outline" onClick={() => audit('test_offerwall_postback','adgem')}>Test postback</Button></div><p className="text-xs text-muted-foreground">Postback URL: <code>/api/postbacks/adgem</code> · Signed mock events only.</p></NetworkCard></div>}{tab === 'reporting' && <div className="grid gap-4 sm:grid-cols-3"><Metric label="Slots served" value={served.toLocaleString()} /><Metric label="Consent acceptance" value="64.8%" /><Metric label="Ad revenue" value="Open Treasury" /><Button variant="outline" onClick={() => audit('open_ad_revenue','treasury')}>Open Ad revenue entries</Button></div>}</div>
+type NetworkResponse = AdSettings & { postbackSecretConfigured: boolean }
+const fetcher = async (url: string) => {
+  const response = await fetch(url, { cache: 'no-store' })
+  const result = await response.json()
+  if (!response.ok) throw new Error(result.error ?? 'Unable to load ad settings')
+  return result
 }
-function NetworkCard({ title, active, onToggle, children }: { title: string; active: boolean; onToggle: () => void; children: React.ReactNode }) { return <section className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card p-5"><div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">{title}</h2><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={onToggle} /> Active</label></div><Badge variant={active ? 'secondary' : 'outline'}>{active ? 'Configured' : 'Disabled'}</Badge>{children}</section> }
-function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-border/70 bg-card p-5"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-2 font-display text-2xl font-bold">{value}</p></div> }
+const sizes: AdSize[] = ['320x100', '300x250', '728x90']
+const positions: AdPlacementSlot['position'][] = ['top', 'inline', 'bottom', 'sidebar']
+
+export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: string, target: string) => void }) {
+  const [tab, setTab] = useState<'networks' | 'placements' | 'offerwall' | 'reporting'>('networks')
+  const [settings, setSettings] = useState<AdSettings | null>(null)
+  const [postbackSecret, setPostbackSecret] = useState('')
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [postbackResult, setPostbackResult] = useState('')
+  const { data: networks, error: networkError, mutate: mutateNetworks } = useSWR<NetworkResponse>('/api/admin/ads/networks', fetcher)
+  const { data: placements, error: placementError, mutate: mutatePlacements } = useSWR<{ placements: AdSettings['placements'] }>('/api/admin/ads/placements', fetcher)
+
+  useEffect(() => {
+    if (!settings && networks && placements) setSettings({ ...networks, placements: placements.placements })
+  }, [networks, placements, settings])
+
+  const update = (change: (draft: AdSettings) => void) => setSettings((current) => {
+    if (!current) return current
+    const draft = structuredClone(current)
+    change(draft)
+    return draft
+  })
+  const save = async () => {
+    if (!settings) return
+    setSaving(true)
+    setMessage('')
+    try {
+      const networkResponse = await fetch('/api/admin/ads/networks', {
+        method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...settings, postbackSecret }),
+      })
+      const networkResult = await networkResponse.json()
+      if (!networkResponse.ok) throw new Error(networkResult.error ?? 'Unable to save network settings')
+      const placementResponse = await fetch('/api/admin/ads/placements', {
+        method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ placements: Object.entries(settings.placements).map(([page, value]) => ({ page, ...value })) }),
+      })
+      const placementResult = await placementResponse.json()
+      if (!placementResponse.ok) throw new Error(placementResult.error ?? 'Unable to save placements')
+      audit('save_ads_settings', tab)
+      setPostbackSecret('')
+      setMessage('Changes saved.')
+      await Promise.all([mutatePlacements(), mutateNetworks()])
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to save ad settings')
+    } finally { setSaving(false) }
+  }
+  const testPostback = async () => {
+    setTesting(true)
+    setPostbackResult('')
+    try {
+      const response = await fetch('/api/admin/ads/offerwall/test-postback', { method: 'POST' })
+      const result = await response.json()
+      setPostbackResult(response.ok ? 'Signed test received. No credits were issued.' : result.error ?? 'Test failed.')
+    } catch { setPostbackResult('Unable to send the test postback.') } finally { setTesting(false) }
+  }
+  const copyPostback = async () => {
+    try { await navigator.clipboard.writeText('/api/postbacks/adgem'); setMessage('Postback URL copied.') } catch { setMessage('Copy is unavailable in this browser.') }
+  }
+
+  if (networkError || placementError) return <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm">Unable to load ad settings. Refresh and try again.</div>
+  if (!settings) return <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground" aria-busy="true">Loading ad settings…</div>
+
+  const setSlotCount = (page: AdPage, count: number) => update((draft) => {
+    const slots = draft.placements[page].slots.slice(0, count)
+    while (slots.length < count) slots.push({ position: 'inline', network: 'A-ADS', size: '728x90' })
+    draft.placements[page].slots = slots
+  })
+  const tabs = ['networks', 'placements', 'offerwall', 'reporting'] as const
+  const unitInput = (label: string, value: string, onChange: (value: string) => void) => <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">{label}<input value={value} onChange={(event) => onChange(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground" /></label>
+  const toggle = (label: string, checked: boolean, onChange: (checked: boolean) => void) => <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />{label}</label>
+
+  return <div className="flex flex-col gap-5">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Admin console</p><h1 className="mt-1 font-display text-2xl font-bold">Ads and Offers</h1><p className="mt-1 text-sm text-muted-foreground">Consent-gated placements, saved to the database. Ads never affect points or prizes.</p></div><div className="flex items-center gap-3">{toggle('Preview mode', settings.previewMode, (checked) => update((draft) => { draft.previewMode = checked }))}{tab !== 'reporting' && <Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</Button>}</div></div>
+    {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Ads settings">{tabs.map((item) => <Button key={item} role="tab" aria-selected={tab === item} variant={tab === item ? 'default' : 'outline'} onClick={() => setTab(item)}>{item[0].toUpperCase() + item.slice(1)}</Button>)}</div>
+
+    {tab === 'networks' && <div className="grid gap-4 lg:grid-cols-2">
+      <NetworkCard title="A-ADS" active={settings.networks.aads.active} onToggle={(active) => update((draft) => { draft.networks.aads.active = active })}>
+        {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} placement active`, settings.networks.aads.unitActive[size], (active) => update((draft) => { draft.networks.aads.unitActive[size] = active }))}{unitInput(`${size} unit ID`, settings.networks.aads.units[size], (value) => update((draft) => { draft.networks.aads.units[size] = value }))}</div>)}
+      </NetworkCard>
+      <NetworkCard title="Adsterra" active={settings.networks.adsterra.active} onToggle={(active) => update((draft) => { draft.networks.adsterra.active = active })}>
+        {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} banner active`, settings.networks.adsterra.bannerActive[size], (active) => update((draft) => { draft.networks.adsterra.bannerActive[size] = active }))}<label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">{size} banner snippet or HTTPS URL<textarea value={settings.networks.adsterra.banner[size]} onChange={(event) => update((draft) => { draft.networks.adsterra.banner[size] = event.target.value })} rows={2} className="rounded-lg border border-border bg-background p-3 text-sm text-foreground" /></label></div>)}
+        <CreativeField label="Native snippet or HTTPS URL" value={settings.networks.adsterra.native} active={settings.networks.adsterra.nativeActive} onValue={(value) => update((draft) => { draft.networks.adsterra.native = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.nativeActive = active })} />
+        <UrlField label="Social bar script URL" value={settings.networks.adsterra.socialBar} active={settings.networks.adsterra.socialBarActive} onValue={(value) => update((draft) => { draft.networks.adsterra.socialBar = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.socialBarActive = active })} />
+        <UrlField label="Popunder script URL" value={settings.networks.adsterra.popunder} active={settings.networks.adsterra.popunderActive} onValue={(value) => update((draft) => { draft.networks.adsterra.popunder = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.popunderActive = active })} />
+        <CreativeField label="Smartlink URL" value={settings.networks.adsterra.smartlink} active={settings.networks.adsterra.smartlinkActive} onValue={(value) => update((draft) => { draft.networks.adsterra.smartlink = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.smartlinkActive = active })} />
+      </NetworkCard>
+    </div>}
+
+    {tab === 'placements' && <div className="flex flex-col gap-3">{(Object.entries(settings.placements) as [AdPage, AdSettings['placements'][AdPage]][]).map(([page, value]) => <section key={page} className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-display text-lg font-bold">{page}</h2><div className="flex items-center gap-4">{toggle('Enabled', value.enabled, (enabled) => update((draft) => { draft.placements[page].enabled = enabled }))}<label className="flex items-center gap-2 text-sm">Slots <input type="number" min={0} max={5} value={value.slots.length} onChange={(event) => setSlotCount(page, Math.min(5, Math.max(0, Number(event.target.value) || 0)))} className="h-9 w-16 rounded-lg border border-border bg-background px-2" /></label></div></div>{value.slots.map((slot, index) => <div key={`${page}-${index}`} className="grid gap-2 sm:grid-cols-3"><label className="flex flex-col gap-1 text-xs text-muted-foreground">Position<select value={slot.position} onChange={(event) => update((draft) => { draft.placements[page].slots[index].position = event.target.value as AdPlacementSlot['position'] })} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground">{positions.map((position) => <option key={position} value={position}>{position}</option>)}</select></label><label className="flex flex-col gap-1 text-xs text-muted-foreground">Network<select value={slot.network} onChange={(event) => update((draft) => { draft.placements[page].slots[index].network = event.target.value as AdPlacementSlot['network'] })} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"><option>A-ADS</option><option>Adsterra</option></select></label><label className="flex flex-col gap-1 text-xs text-muted-foreground">Size<select value={slot.size} onChange={(event) => update((draft) => { draft.placements[page].slots[index].size = event.target.value as AdSize })} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground">{sizes.map((size) => <option key={size}>{size}</option>)}</select></label></div>)}</section>)}</div>}
+
+    {tab === 'offerwall' && <section className="flex flex-col gap-4 rounded-xl border border-border/70 bg-card p-5"><div className="flex items-center justify-between"><div><h2 className="font-display text-lg font-bold">Offerwall</h2><p className="text-sm text-muted-foreground">Provider settings and encrypted postback credential.</p></div><Badge variant={settings.offerwall.active ? 'secondary' : 'outline'}>{settings.offerwall.active ? 'Active' : 'Disabled'}</Badge></div>{toggle('Offerwall active', settings.offerwall.active, (active) => update((draft) => { draft.offerwall.active = active }))}<div className="grid gap-3 sm:grid-cols-2">{unitInput('Provider name', settings.offerwall.provider, (value) => update((draft) => { draft.offerwall.provider = value }))}{unitInput('Application ID', settings.offerwall.appId, (value) => update((draft) => { draft.offerwall.appId = value }))}{unitInput('Embed URL template (must include {userId})', settings.offerwall.embedUrl, (value) => update((draft) => { draft.offerwall.embedUrl = value }))}{unitInput('Postback secret (leave blank to keep current)', postbackSecret, setPostbackSecret)}{unitInput('Reward share percent', String(settings.offerwall.rewardShare), (value) => update((draft) => { draft.offerwall.rewardShare = Number(value) }))}{unitInput('Hold days', String(settings.offerwall.holdDays), (value) => update((draft) => { draft.offerwall.holdDays = Number(value) }))}{unitInput('FX rate', String(settings.offerwall.fxRate), (value) => update((draft) => { draft.offerwall.fxRate = Number(value) }))}</div><div className="flex flex-wrap items-center gap-2"><Button type="button" variant="outline" onClick={copyPostback}>Copy /api/postbacks/adgem</Button><Button type="button" variant="outline" onClick={testPostback} disabled={testing}>{testing ? 'Sending…' : 'Test postback'}</Button><span className="text-xs text-muted-foreground">{networks?.postbackSecretConfigured ? 'A postback secret is configured.' : 'No postback secret is configured.'}</span></div>{postbackResult && <p role="status" className="text-sm text-muted-foreground">{postbackResult}</p>}</section>}
+
+    {tab === 'reporting' && <section className="rounded-xl border border-border/70 bg-card p-5"><h2 className="font-display text-lg font-bold">Ad revenue entries</h2><p className="mt-2 text-sm text-muted-foreground">Revenue tracking arrives with the treasury update.</p></section>}
+  </div>
+}
+
+function NetworkCard({ title, active, onToggle, children }: { title: string; active: boolean; onToggle: (active: boolean) => void; children: React.ReactNode }) {
+  return <section className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card p-5"><div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">{title}</h2><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => onToggle(event.target.checked)} /> Active</label></div><Badge variant={active ? 'secondary' : 'outline'}>{active ? 'Configured' : 'Disabled'}</Badge>{children}</section>
+}
+function CreativeField({ label, value, active, onValue, onActive }: { label: string; value: string; active: boolean; onValue: (value: string) => void; onActive: (active: boolean) => void }) {
+  return <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => onActive(event.target.checked)} />Active</label><label className="flex flex-col gap-1 text-xs text-muted-foreground">{label}<textarea value={value} onChange={(event) => onValue(event.target.value)} rows={2} className="rounded-lg border border-border bg-background p-3 text-sm text-foreground" /></label></div>
+}
+function UrlField({ label, value, active, onValue, onActive }: { label: string; value: string; active: boolean; onValue: (value: string) => void; onActive: (active: boolean) => void }) {
+  return <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => onActive(event.target.checked)} />Active</label><label className="flex flex-col gap-1 text-xs text-muted-foreground">{label}<input value={value} onChange={(event) => onValue(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground" /></label></div>
+}
