@@ -1,0 +1,5 @@
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { requireAdminApi,writeAudit } from '@/lib/admin-api'
+const schema=z.object({version:z.number().int().positive()})
+export async function POST(request:Request,{params}:{params:Promise<{slug:string}>}){const auth=await requireAdminApi();if('response'in auth)return auth.response;const {slug}=await params;const parsed=schema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:'Invalid version'},{status:400});const {data:version,error}=await auth.supabase.from('legal_versions').select('content').eq('slug',slug).eq('version',parsed.data.version).maybeSingle();if(error||!version)return NextResponse.json({error:'Version not found'},{status:404});const {error:updateError}=await auth.supabase.from('legal_pages').update({draft_content:version.content}).eq('slug',slug);if(updateError)return NextResponse.json({error:updateError.message},{status:500});await writeAudit(auth.supabase,'restore_legal_version','legal_page',slug,{version:parsed.data.version});return NextResponse.json({ok:true})}

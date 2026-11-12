@@ -1,45 +1,5 @@
-'use client'
-
-import Link from 'next/link'
-import { useState } from 'react'
-import { ChevronDown, Check, Zap, Trophy, Target, ShieldCheck } from 'lucide-react'
-import { APP_NAME, BOOSTER_MULTIPLIER, MIN_PREDICTIONS_FOR_PRIZE, POINTS_CORRECT_OUTCOME, POINTS_EXACT_SCORE_BONUS, WEEKLY_PRIZE_TIERS } from '@/lib/config'
-import { leaderboard } from '@/lib/mock-data'
-import { siteSettings } from '@/lib/site-settings'
-
-const faqs = [
-  ['Is it free?', 'Yes. FreeBetNGN is free to play, with no deposits or hidden charges.'],
-  ['How are winners chosen?', 'The leaderboard ranks players by weekly points, with the published tie-breakers applied when needed.'],
-  ['How do I get my airtime?', 'Eligible winners receive airtime on the verified phone number on their account after the week closes.'],
-  ['What if a match is postponed?', 'Postponed fixtures are voided and do not count toward your score.'],
-  ['Why was my account flagged?', 'We protect fair play by reviewing duplicate accounts, automation, and suspicious prediction patterns.'],
-]
-
-export default function Page() {
-  const [openFaq, setOpenFaq] = useState(0)
-  return <main className="overflow-hidden">
-    <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-6"><Link href="/" className="flex items-center gap-2 font-display text-xl font-black"> <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">F</span> {siteSettings.siteName}</Link><nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex"><a href="#how-it-works">How it works</a><a href="#prizes">Prizes</a><a href="#faq">FAQ</a></nav><div className="flex items-center gap-2"><Link href="/login" className="hidden rounded-xl px-3 py-2 text-sm font-semibold sm:block">Log in</Link><Link href="/signup" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/20">Start free</Link></div></header>
-    <section className="relative mx-auto max-w-6xl px-5 pb-20 pt-12 md:pb-28 md:pt-24"><div className="pointer-events-none absolute -right-24 -top-20 size-80 rounded-full bg-primary/15 blur-3xl"/><div className="max-w-3xl"><p className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-primary"><Zap className="size-3.5"/> Nigeria&apos;s free prediction league</p><h1 className="font-display text-5xl font-black leading-[0.98] tracking-[-0.04em] md:text-7xl">Predict the match.<br/><span className="text-primary">Climb the table.</span><br/>Win airtime.</h1><p className="mt-6 max-w-xl text-base leading-7 text-muted-foreground md:text-lg">Put your football knowledge to work. Make free predictions, score points, and compete every week for airtime prizes.</p><div className="mt-8 flex flex-wrap gap-3"><Link href="/signup" className="rounded-2xl bg-primary px-5 py-3.5 font-bold text-primary-foreground shadow-xl shadow-primary/20">Start Predicting (Free)</Link><a href="#how-it-works" className="rounded-2xl border border-border bg-card px-5 py-3.5 font-bold">How it works</a></div><p className="mt-4 text-xs text-muted-foreground">No deposits. No gambling. Just football predictions.</p></div></section>
-    <section id="how-it-works" className="border-y border-border/60 bg-card/40"><div className="mx-auto max-w-6xl px-5 py-16"><div className="mb-10 max-w-xl"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Simple by design</p><h2 className="mt-2 font-display text-3xl font-black">How it works</h2></div><div className="grid gap-4 md:grid-cols-3">{[['01','Predict','Predict real fixtures before kickoff.'],['02','Score','Earn points for correct results and exact scores.'],['03','Win','Top the weekly leaderboard to win airtime prizes.']].map(([number,title,body])=><article key={number} className="rounded-3xl border border-border bg-background p-6"><span className="font-display text-4xl font-black text-primary/40">{number}</span><h3 className="mt-8 font-display text-xl font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p></article>)}</div></div></section>
-    <section className="mx-auto grid max-w-6xl gap-6 px-5 py-16 md:grid-cols-[1.1fr_.9fr]"><div className="rounded-3xl bg-primary p-7 text-primary-foreground md:p-9"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground/70">Your points, clearly explained</p><h2 className="mt-3 font-display text-3xl font-black">Know exactly how you score.</h2><div className="mt-8 flex flex-col gap-4">{[[POINTS_CORRECT_OUTCOME,'Correct result','Get the outcome right.'],[POINTS_EXACT_SCORE_BONUS,'Exact score bonus','Call the scoreline exactly.'],['× '+BOOSTER_MULTIPLIER,'Weekly Booster','Double one prediction every week.']].map(([score,title,body])=><div key={title} className="flex items-center gap-4 rounded-2xl bg-black/10 p-4"><span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-white/15 font-display text-lg font-black">{score}</span><div><p className="font-bold">{title}</p><p className="text-sm text-primary-foreground/70">{body}</p></div></div>)}</div></div><div id="prizes" className="rounded-3xl border border-border bg-card p-7 md:p-9"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Every week</p><h2 className="mt-2 font-display text-3xl font-black">Weekly prizes</h2></div><Trophy className="size-7 text-amber-300"/></div><div className="mt-6 flex flex-col gap-2">{WEEKLY_PRIZE_TIERS.map((tier)=><div key={tier.rank} className="flex items-center justify-between rounded-xl bg-background px-4 py-3"><span className="text-sm font-semibold">#{tier.rank}</span><span className="font-display font-bold">₦{tier.prizeNaira.toLocaleString()}</span></div>)}</div><p className="mt-5 text-xs leading-5 text-muted-foreground">Free to play. No deposits. Prizes are paid as airtime. You must make at least {MIN_PREDICTIONS_FOR_PRIZE} predictions in a week to qualify.</p></div></section>
-    <section className="mx-auto max-w-6xl px-5 pb-16"><div className="rounded-3xl border border-border bg-card p-7 md:p-9"><div className="flex items-end justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Live preview</p><h2 className="mt-2 font-display text-3xl font-black">This week&apos;s top 5</h2></div><span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">● LIVE</span></div><div className="mt-6 grid gap-2 md:grid-cols-5">{leaderboard.slice(0,5).map((player,index)=><div key={player.displayName} className="rounded-2xl bg-background p-4"><div className="flex items-center justify-between"><span className="font-display text-2xl font-black text-muted-foreground/60">0{index+1}</span><MedalIcon rank={index}/></div><p className="mt-5 truncate font-bold">{player.displayName}</p><p className="mt-1 text-sm text-muted-foreground">{player.points} pts</p></div>)}</div></div></section>
-    <section id="faq" className="mx-auto max-w-3xl px-5 pb-20"><div className="text-center"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Good to know</p><h2 className="mt-2 font-display text-3xl font-black">Questions, answered.</h2></div><div className="mt-8 flex flex-col gap-2">{faqs.map(([question,answer],index)=><div key={question} className="rounded-2xl border border-border bg-card"><button onClick={()=>setOpenFaq(openFaq===index?-1:index)} className="flex w-full items-center justify-between gap-4 p-5 text-left font-bold"><span>{question}</span><ChevronDown className={`size-4 transition-transform ${openFaq===index?'rotate-180':''}`}/></button>{openFaq===index&&<p className="px-5 pb-5 text-sm leading-6 text-muted-foreground">{answer}</p>}</div>)}</div></section>
-    <footer className="border-t border-border/60"><div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-8 md:flex-row md:items-center md:justify-between"><div><p className="font-display font-black">{APP_NAME}</p><p className="mt-1 text-xs text-muted-foreground">{siteSettings.tagline}</p></div><div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground"><a href="#">Terms</a><a href="#">Privacy</a><a href="#">Prize Rules</a><a href="#">Responsible Play</a><a href="#">Contact</a></div><p className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-black text-primary">18+ only</p></div></footer>
-  </main>
-}
-function MedalIcon({rank}:{rank:number}) { return <span className={`flex size-7 items-center justify-center rounded-full text-xs font-black ${rank===0?'bg-amber-300 text-amber-950':'bg-muted text-muted-foreground'}`}>{rank===0?'★':rank+1}</span> }
-
-// Keep this import local to make the preview data source obvious.
-function CheckIcon() { return <Check className="size-4"/> }
-function _Unused() { return <><Target/><ShieldCheck/><CheckIcon/></> }
-
-export const dynamic = 'force-dynamic'
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _unused = _Unused
-
-// Avoid a large static hero dependency while keeping the page server-compatible.
-void _unused
-
-// The page intentionally uses mock data until the auth/database adapter is connected.
-
+import type { Metadata } from 'next'
+import { LandingPage } from '@/components/landing-page'
+import { getSiteSettings,getSeoPage } from '@/lib/server/site-content'
+export async function generateMetadata():Promise<Metadata>{const [settings,seo]=await Promise.all([getSiteSettings(),getSeoPage('home')]);return {title:seo?.title??settings.siteName,description:seo?.description??settings.seo.description,robots:seo?.noindex?{index:false,follow:false}:{index:true,follow:true}}}
+export default async function Page(){const settings=await getSiteSettings();return <LandingPage settings={settings}/>}

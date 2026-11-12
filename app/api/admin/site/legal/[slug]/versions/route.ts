@@ -1,0 +1,4 @@
+import { NextResponse } from 'next/server'
+import { requireAdminApi } from '@/lib/admin-api'
+import { buildPagination,parsePagination } from '@/lib/admin-pagination'
+export async function GET(request:Request,{params}:{params:Promise<{slug:string}>}){const auth=await requireAdminApi();if('response'in auth)return auth.response;const {slug}=await params;const {page,pageSize,from,to}=parsePagination(new URL(request.url).searchParams);const {data,count,error}=await auth.supabase.from('legal_versions').select('id,slug,version,title,created_at,created_by',{count:'exact'}).eq('slug',slug).order('version',{ascending:false}).range(from,to);if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json({versions:data??[],pagination:buildPagination(page,pageSize,count??0)})}

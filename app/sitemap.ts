@@ -1,3 +1,3 @@
 import type { MetadataRoute } from 'next'
-import { getSiteSettings } from '@/lib/server/site-content'
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> { const settings=await getSiteSettings(); const pages=['','terms','privacy','prize-rules','responsible-play']; return pages.map(path=>({url:`${settings.seo.canonicalDomain}/${path}`,lastModified:new Date()})) }
+import { getSiteSettings,getSeoPage } from '@/lib/server/site-content'
+export default async function sitemap():Promise<MetadataRoute.Sitemap>{const settings=await getSiteSettings();const routes=['/','/terms','/privacy','/prize-rules','/responsible-play'];const indexed=await Promise.all(routes.map(async route=>({route,seo:await getSeoPage(route==='/'?'home':route.slice(1))})));return indexed.filter(item=>!item.seo?.noindex).map(({route})=>({url:new URL(route,settings.seo.canonicalDomain).toString(),lastModified:new Date(),changeFrequency:route==='/'?'weekly':'yearly',priority:route==='/'?1:0.4}))}

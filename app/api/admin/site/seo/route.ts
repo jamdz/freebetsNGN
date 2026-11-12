@@ -1,0 +1,7 @@
+import { NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
+import { z } from 'zod'
+import { requireAdminApi, writeAudit } from '@/lib/admin-api'
+const row=z.object({page_key:z.string().min(1).max(80),title:z.string().max(160),description:z.string().max(320),noindex:z.boolean()});const schema=z.object({pages:z.array(row).max(100)})
+export async function GET(){const auth=await requireAdminApi();if('response'in auth)return auth.response;const {data,error}=await auth.supabase.from('seo_pages').select('page_key,title,description,noindex').order('page_key');if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json({pages:data?.length?data:['home','terms','privacy','prize-rules','responsible-play'].map(page_key=>({page_key,title:'',description:'',noindex:false}))})}
+export async function PUT(request:Request){const auth=await requireAdminApi();if('response'in auth)return auth.response;const parsed=schema.safeParse(await request.json().catch(()=>null));if(!parsed.success)return NextResponse.json({error:'Invalid SEO entries'},{status:400});const {error}=await auth.supabase.from('seo_pages').upsert(parsed.data.pages,{onConflict:'page_key'});if(error)return NextResponse.json({error:error.message},{status:500});await writeAudit(auth.supabase,'save_site_seo','seo_pages',null,{count:parsed.data.pages.length});revalidateTag('site-settings',{expire:0});return NextResponse.json({ok:true})}

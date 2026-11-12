@@ -1,0 +1,4 @@
+'use client'
+import Script from 'next/script'
+import { useAdConsent } from '@/components/ads/AdSlot'
+export function ConsentAnalytics({enabled,measurementId,customScripts,customScriptsEnabled}:{enabled:boolean;measurementId:string;customScripts:string;customScriptsEnabled:boolean}){const {consent}=useAdConsent();if(consent!==true)return null;return <>{enabled&&/^G-[A-Z0-9]{10}$/.test(measurementId)&&<><Script src={`https://www.googletagmanager.com/gtag/js?id=${measurementId}`} strategy="afterInteractive"/><Script id="site-ga" strategy="afterInteractive">{`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${measurementId}');`}</Script></>}{customScriptsEnabled&&customScripts&&<Script id="admin-custom-head" strategy="afterInteractive" dangerouslySetInnerHTML={{__html:customScripts}}/>}</>}
