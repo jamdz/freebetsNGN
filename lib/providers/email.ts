@@ -1,3 +1,4 @@
+import 'server-only'
 import nodemailer from 'nodemailer'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getIntegration } from '@/lib/server/integrations'

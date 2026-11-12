@@ -1,3 +1,4 @@
+import 'server-only'
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
 
 function key() {

@@ -31,7 +31,7 @@ export async function POST(request: Request) {
         if (!template || !template.enabled) return NextResponse.json({ error: 'Email template is missing or disabled' }, { status: 400 })
         const unknown = [...validateTemplate(template.subject ?? ''), ...validateTemplate(template.body)]
         if (unknown.length) return NextResponse.json({ error: `Unsupported template variable: ${unknown[0]}` }, { status: 400 })
-        const values = { nickname: 'Admin', amount: '1,000', reference: 'TEST-001', reason: 'Provider test', rank: '1', date: new Date().toLocaleDateString('en-NG'), link: 'https://freebetngn.com' }
+        const values = { nickname: 'Admin', amount: '1,000', reference: 'TEST-001', reason: 'Provider test', rank: '1', date: new Date().toLocaleDateString('en-NG'), link: process.env.NEXT_PUBLIC_SITE_URL ?? '' }
         subject = renderTemplate(template.subject ?? '', values)
         html = renderTemplate(template.body, values)
       }
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     await writeAudit(auth.supabase, 'send_messaging_test', `messaging:${channel}`, maskedRecipient(target, channel), { event_key: eventKey })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 300) : 'Provider test failed'
+    const message = 'Provider test failed'
     await createAdminClient().from('delivery_logs').insert({ channel, event_key: eventKey, recipient_masked: maskedRecipient(target, channel), status: 'failed', error: message })
     await writeAudit(auth.supabase, 'send_messaging_test_failed', `messaging:${channel}`, maskedRecipient(target, channel), { event_key: eventKey, error: message })
     return serverError(message)

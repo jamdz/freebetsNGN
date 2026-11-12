@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const integration = await getIntegration('sms')
     maxAttempts = Number((integration.publicConfig as { maxAttempts?: number }).maxAttempts ?? maxAttempts)
   } catch {
-    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_MOCK_OTP !== 'true') return NextResponse.json({ error: 'SMS verification settings are unavailable' }, { status: 503 })
+    if (process.env.NODE_ENV === 'production') return NextResponse.json({ error: 'SMS verification settings are unavailable' }, { status: 503 })
   }
   const { data: otp, error: otpError } = await db.from('phone_otps').select('id,code_hash,expires_at,attempts,consumed').eq('user_id', user.id).eq('phone', profile.phone).eq('consumed', false).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (otpError) return NextResponse.json({ error: 'Unable to check verification code' }, { status: 500 })

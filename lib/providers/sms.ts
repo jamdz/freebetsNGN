@@ -1,3 +1,4 @@
+import 'server-only'
 import { getIntegration } from '@/lib/server/integrations'
 
 export type SmsSettings = {

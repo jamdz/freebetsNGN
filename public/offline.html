@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#22c55e">
+    <title>Offline — FreeBetNGN</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101a14; color: #f3f7f4; }
+      body { min-height: 100vh; display: grid; place-items: center; margin: 0; padding: 1.5rem; box-sizing: border-box; }
+      main { width: min(100%, 28rem); padding: 2rem; border: 1px solid #355141; border-radius: 1.25rem; background: #17231b; }
+      h1 { margin: 0 0 .75rem; font-size: 1.5rem; }
+      p { color: #c2d1c7; line-height: 1.6; }
+      button { min-height: 2.75rem; margin-top: .75rem; padding: 0 1rem; border: 0; border-radius: .75rem; background: #22c55e; color: #08120b; font: inherit; font-weight: 700; cursor: pointer; }
+      button:focus-visible { outline: 3px solid #f59e0b; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>You&apos;re offline</h1>
+      <p>FreeBetNGN needs an internet connection to load your account and save changes. Check your connection, then try again.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

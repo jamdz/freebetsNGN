@@ -26,7 +26,7 @@ const defaults = {
   sms: { baseUrl: '', senderId: '', channel: 'generic', codeLength: 6, expiryMinutes: 10, resendCooldownSeconds: 30, maxAttempts: 5, maxSendsPerNumberPerDay: 5, lowBalanceThreshold: 0 },
 }
 function renderPreview(text: string) {
-  const sample: Record<string, string> = { nickname: 'Amina', amount: '₦1,000', reference: 'FB-2048', reason: 'Request approved', rank: '2', date: '12 Nov 2026', link: 'https://freebetngn.com' }
+  const sample: Record<string, string> = { nickname: 'Amina', amount: '₦1,000', reference: 'FB-2048', reason: 'Request approved', rank: '2', date: '12 Nov 2026', link: process.env.NEXT_PUBLIC_SITE_URL ?? '' }
   return text.replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (match, key: string) => sample[key] ?? match)
 }
 function Field({ label, value, onChange, type = 'text', placeholder, min, max, disabled = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; placeholder?: string; min?: number; max?: number; disabled?: boolean }) {

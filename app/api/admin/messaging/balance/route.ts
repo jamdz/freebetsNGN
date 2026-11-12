@@ -12,6 +12,6 @@ export async function GET() {
     await writeAudit(auth.supabase, 'check_sms_balance', 'integration:sms', 'sms', { is_low: isLow })
     return NextResponse.json({ ...balance, isLow })
   } catch (error) {
-    return serverError(error instanceof Error ? error.message : 'Unable to check SMS balance')
+    return serverError('Unable to check SMS balance')
   }
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ADMIN_COOKIE, adminCookieOptions, adminPath, createAdminSession, isAdminConfigured, verifyAdminCredentials } from '@/lib/admin-auth'
+import { ADMIN_COOKIE, adminCookieOptions, createAdminSession, isAdminConfigured, verifyAdminCredentials } from '@/lib/admin-auth'
 import { decryptTotpSecret, isAdminLoginLocked, recordAdminLoginFailure } from '@/lib/admin-security'
 import { verify } from 'otplib'
 
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   let cookie: string
   try { cookie = await createAdminSession(credentials.email, request) }
   catch { return NextResponse.json({ error: 'Admin login is temporarily unavailable' }, { status: 503 }) }
-  const response = NextResponse.json({ ok: true, path: adminPath(), requiresTotp: false })
+  const response = NextResponse.json({ ok: true, requiresTotp: false })
   response.cookies.set(ADMIN_COOKIE, cookie, adminCookieOptions)
   return response
 }

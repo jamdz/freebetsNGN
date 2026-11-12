@@ -6,7 +6,7 @@ import { getIntegration } from '@/lib/server/integrations'
 import { sendVerificationSms } from '@/lib/providers/sms'
 
 export const runtime = 'nodejs'
-const MOCK_OTP_ENABLED = process.env.NODE_ENV !== 'production' || process.env.ALLOW_MOCK_OTP === 'true'
+const MOCK_OTP_ENABLED = process.env.NODE_ENV !== 'production'
 const DEFAULTS = { codeLength: 6, expiryMinutes: 10, resendCooldownSeconds: 30, maxAttempts: 5, maxSendsPerNumberPerDay: 5 }
 function otpHash(userId: string, phone: string, code: string) {
   const secret = process.env.OTP_HASH_SECRET
@@ -65,7 +65,7 @@ export async function POST() {
     try {
       await sendVerificationSms(profile.phone, code, settings.expiryMinutes)
     } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 300) : 'SMS provider failed'
+      const message = 'SMS delivery failed'
       await db.from('phone_otps').update({ consumed: true }).eq('id', otp.id)
       await db.from('delivery_logs').insert({ channel: 'sms', event_key: 'phone_verification', recipient_masked: maskPhone(profile.phone), status: 'failed', error: message })
       return NextResponse.json({ error: 'Unable to send verification code' }, { status: 502 })

@@ -1,3 +1,4 @@
+import 'server-only'
 import { createHash } from 'node:crypto'
 import { decryptSecrets, encryptSecrets } from '@/lib/server/secrets'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
