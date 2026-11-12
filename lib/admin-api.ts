@@ -9,7 +9,7 @@ export function serviceClient() {
 export async function requireAdminApi() {
   const session = (await cookies()).get(ADMIN_COOKIE)?.value
   if (!isAdminConfigured()) return { response: Response.json({ error: 'Admin is not configured' }, { status: 503 }) }
-  if (!verifyAdminSession(session)) return { response: Response.json({ error: 'Unauthorized' }, { status: 401 }) }
+  if (!(await verifyAdminSession(session))) return { response: Response.json({ error: 'Unauthorized' }, { status: 401 }) }
   return { supabase: serviceClient() }
 }
 

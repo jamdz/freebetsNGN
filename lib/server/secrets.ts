@@ -1,11 +1,15 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
 
 function key() {
   const raw = process.env.INTEGRATION_ENCRYPTION_KEY
-  if (!raw) throw new Error('INTEGRATION_ENCRYPTION_KEY is required for integration secrets')
-  const value = Buffer.from(raw, 'base64')
-  if (value.length !== 32) throw new Error('INTEGRATION_ENCRYPTION_KEY must be base64-encoded 32 bytes')
-  return value
+  if (raw) {
+    const value = Buffer.from(raw, 'base64')
+    if (value.length !== 32) throw new Error('INTEGRATION_ENCRYPTION_KEY must be base64-encoded 32 bytes')
+    return value
+  }
+  const adminSecret = process.env.ADMIN_SESSION_SECRET
+  if (!adminSecret || adminSecret.length < 32) throw new Error('An existing 32-character encryption secret is required')
+  return Buffer.from(hkdfSync('sha256', Buffer.from(adminSecret), Buffer.from('freebetngn'), Buffer.from('admin-totp-secrets'), 32))
 }
 
 export function encryptSecrets(value: Record<string, unknown>) {
