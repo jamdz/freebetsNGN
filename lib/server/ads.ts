@@ -1,6 +1,6 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { adPageFromPath, type AdNetwork, type AdPage, type AdSettings, type AdSize } from '@/lib/ad-settings'
+import { adPageFromPath, type AdPage, type AdSettings, type AdSize } from '@/lib/ad-settings'
 
 export const AD_PAGES: AdPage[] = ['Home', 'Fixtures', 'Predictions', 'Leaderboard', 'Rewards', 'Earn', 'Referrals', 'Profile', 'Spin']
 export const AD_SIZES: AdSize[] = ['320x100', '300x250', '728x90']
@@ -86,12 +86,17 @@ export function safeCreative(value: string) {
 }
 
 export function safeScriptUrl(value: string) {
-  try {
-    const url = new URL(value.trim())
-    return url.protocol === 'https:' && !url.username && !url.password && url.pathname.toLowerCase().endsWith('.js') ? url.toString() : ''
-  } catch {
-    return ''
+  let candidate = value.trim()
+  if (/^<script\b/i.test(candidate)) {
+    const tag = candidate.match(/^<script\b([^>]*)>\s*<\/script\s*>$/i)
+    const src = tag?.[1].match(/(?:^|\s)src\s*=\s*(["'])(.*?)\1/i)
+    if (!src) return ''
+    candidate = src[2]
   }
+  try {
+    const url = new URL(candidate.startsWith('//') ? `https:${candidate}` : candidate)
+    return url.protocol === 'https:' && !url.username && !url.password && url.pathname.toLowerCase().endsWith('.js') ? url.toString() : ''
+  } catch { return '' }
 }
 
 export function resolvePage(request: Request, requestedPage: string | null) {
@@ -106,21 +111,13 @@ export function resolvePage(request: Request, requestedPage: string | null) {
 
 export function publicAdConfig(settings: AdSettings, page: AdPage, consent: boolean, surface?: string) {
   const isSmartlinkSurface = surface === 'smartlink'
-  const smartlinkAllowed = consent && settings.networks.adsterra.active && settings.networks.adsterra.smartlinkActive && Boolean(safeCreative(settings.networks.adsterra.smartlink)?.kind === 'url') && (page === 'Earn' || isSmartlinkSurface)
+  const smartlinkAllowed = consent && isSmartlinkSurface && settings.networks.adsterra.active && settings.networks.adsterra.smartlinkActive && Boolean(safeCreative(settings.networks.adsterra.smartlink)?.kind === 'url') && page === 'Earn'
   if (!consent) return { page, consent: false, enabled: false, previewMode: false, slots: [], smartlink: null }
   if (isSmartlinkSurface) return { page, consent: true, enabled: false, previewMode: false, slots: [], smartlink: smartlinkAllowed ? { href: safeCreative(settings.networks.adsterra.smartlink)!.src } : null }
   const placement = settings.placements[page]
-  const slots = placement?.slots.flatMap((slot) => {
+  const slots = placement?.slots.flatMap((slot, index) => {
     if (!placement.enabled) return []
-    const network: AdNetwork = slot.network
-    if (network === 'A-ADS') {
-      const provider = settings.networks.aads
-      const unitId = provider.active && provider.unitActive[slot.size] ? provider.units[slot.size].trim() : ''
-      return [{ ...slot, unitId: /^[a-zA-Z0-9_-]{1,128}$/.test(unitId) ? unitId : '', creative: null }]
-    }
-    const provider = settings.networks.adsterra
-    const creative = provider.active && provider.bannerActive[slot.size] ? safeCreative(provider.banner[slot.size]) : null
-    return [{ ...slot, unitId: '', creative }]
+    return [{ position: slot.position, network: slot.network, size: slot.size, index }]
   }) ?? []
   const adsterra = settings.networks.adsterra
   const socialBar = placement?.enabled && adsterra.active && adsterra.socialBarActive ? safeScriptUrl(adsterra.socialBar) : ''

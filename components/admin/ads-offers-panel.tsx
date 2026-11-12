@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import type { AdPage, AdSettings, AdSize, AdPlacementSlot } from '@/lib/ad-settings'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import type { AdPage, AdSettings, AdSize, AdPlacementSlot, AdNetwork } from '@/lib/ad-settings'
 
 type NetworkResponse = AdSettings & { postbackSecretConfigured: boolean }
 const fetcher = async (url: string) => {
@@ -92,13 +93,13 @@ export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: s
 
     {tab === 'networks' && <div className="grid gap-4 lg:grid-cols-2">
       <NetworkCard title="A-ADS" active={settings.networks.aads.active} onToggle={(active) => update((draft) => { draft.networks.aads.active = active })}>
-        {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} placement active`, settings.networks.aads.unitActive[size], (active) => update((draft) => { draft.networks.aads.unitActive[size] = active }))}{unitInput(`${size} unit ID`, settings.networks.aads.units[size], (value) => update((draft) => { draft.networks.aads.units[size] = value }))}</div>)}
+        {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} placement active`, settings.networks.aads.unitActive[size], (active) => update((draft) => { draft.networks.aads.unitActive[size] = active }))}<SnippetField network="A-ADS" size={size} value={settings.networks.aads.units[size]} onChange={(value) => update((draft) => { draft.networks.aads.units[size] = value })} /></div>)}
       </NetworkCard>
       <NetworkCard title="Adsterra" active={settings.networks.adsterra.active} onToggle={(active) => update((draft) => { draft.networks.adsterra.active = active })}>
-        {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} banner active`, settings.networks.adsterra.bannerActive[size], (active) => update((draft) => { draft.networks.adsterra.bannerActive[size] = active }))}<label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">{size} banner snippet or HTTPS URL<textarea value={settings.networks.adsterra.banner[size]} onChange={(event) => update((draft) => { draft.networks.adsterra.banner[size] = event.target.value })} rows={2} className="rounded-lg border border-border bg-background p-3 text-sm text-foreground" /></label></div>)}
+        {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} banner active`, settings.networks.adsterra.bannerActive[size], (active) => update((draft) => { draft.networks.adsterra.bannerActive[size] = active }))}<SnippetField network="Adsterra" size={size} value={settings.networks.adsterra.banner[size]} onChange={(value) => update((draft) => { draft.networks.adsterra.banner[size] = value })} /></div>)}
         <CreativeField label="Native snippet or HTTPS URL" value={settings.networks.adsterra.native} active={settings.networks.adsterra.nativeActive} onValue={(value) => update((draft) => { draft.networks.adsterra.native = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.nativeActive = active })} />
-        <UrlField label="Social bar script URL" value={settings.networks.adsterra.socialBar} active={settings.networks.adsterra.socialBarActive} onValue={(value) => update((draft) => { draft.networks.adsterra.socialBar = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.socialBarActive = active })} />
-        <UrlField label="Popunder script URL" value={settings.networks.adsterra.popunder} active={settings.networks.adsterra.popunderActive} onValue={(value) => update((draft) => { draft.networks.adsterra.popunder = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.popunderActive = active })} />
+        <UrlField label="Social bar script URL or full script tag" value={settings.networks.adsterra.socialBar} active={settings.networks.adsterra.socialBarActive} onValue={(value) => update((draft) => { draft.networks.adsterra.socialBar = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.socialBarActive = active })} />
+        <UrlField label="Popunder script URL or full script tag" value={settings.networks.adsterra.popunder} active={settings.networks.adsterra.popunderActive} onValue={(value) => update((draft) => { draft.networks.adsterra.popunder = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.popunderActive = active })} />
         <CreativeField label="Smartlink URL" value={settings.networks.adsterra.smartlink} active={settings.networks.adsterra.smartlinkActive} onValue={(value) => update((draft) => { draft.networks.adsterra.smartlink = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.smartlinkActive = active })} />
       </NetworkCard>
     </div>}
@@ -111,6 +112,69 @@ export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: s
   </div>
 }
 
+type SnippetValidation = { ok: boolean; issues: string[]; html: string; width?: number; height?: number; unitId?: string }
+const slotDimensions: Record<AdSize, { width: number; height: number }> = { '320x100': { width: 320, height: 100 }, '300x250': { width: 300, height: 250 }, '728x90': { width: 728, height: 90 } }
+
+function SnippetField({ network, size, value, onChange }: { network: Extract<AdNetwork, 'A-ADS' | 'Adsterra'>; size: AdSize; value: string; onChange: (value: string) => void }) {
+  const [candidate, setCandidate] = useState('')
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setCandidate(value), 300)
+    return () => window.clearTimeout(timeout)
+  }, [value])
+  const { data, error, isLoading } = useSWR<SnippetValidation>(candidate.trim() ? ['/api/admin/ads/snippets/validate', network, size, candidate] as const : null, async ([url, selectedNetwork, selectedSize, snippet]) => {
+    const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ network: selectedNetwork, size: selectedSize, snippet }) })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error ?? 'Unable to validate snippet')
+    return result as SnippetValidation
+  }, { revalidateOnFocus: false })
+  const current = candidate === value ? data : undefined
+  const currentError = candidate === value ? error : undefined
+  const pending = Boolean(value.trim()) && (candidate !== value || isLoading)
+  const dimensions = slotDimensions[size]
+  const mismatch = current?.width !== undefined && current.height !== undefined && (current.width !== dimensions.width || current.height !== dimensions.height)
+  const previewDocument = current?.ok ? `<!doctype html><html><head><meta charset="utf-8"></head><body style="background:transparent;margin:0;display:flex;align-items:center;justify-content:center;overflow:hidden">${current.html}</body></html>` : ''
+
+  return <div className="flex flex-col gap-2">
+    <label htmlFor={`snippet-${network.toLowerCase()}-${size}`} className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">{size} {network} banner snippet
+      <textarea id={`snippet-${network.toLowerCase()}-${size}`} value={value} onChange={(event) => onChange(event.target.value)} rows={6} maxLength={8192} spellCheck={false} className="rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground" />
+    </label>
+    <p className="text-xs text-muted-foreground">Paste the code exactly as the network gives it</p>
+    <div className="flex flex-wrap items-center gap-2" aria-live="polite">
+      {pending && <Badge variant="outline">Checking…</Badge>}
+      {current && <Badge variant={current.ok ? 'secondary' : 'destructive'}>{current.ok ? 'Valid' : 'Invalid'}</Badge>}
+      {current?.ok && <span className="text-xs text-muted-foreground">{current.unitId ? `Unit ID ${current.unitId}` : current.width && current.height ? `Detected ${current.width}×${current.height}` : 'Dimensions not detected'}</span>}
+      {current && !current.ok && current.issues[0] && <span className="text-xs text-destructive">{current.issues[0]}</span>}
+      {currentError && <span role="alert" className="text-xs text-destructive">{currentError.message}</span>}
+      {mismatch && <span className="text-xs text-amber-600">Warning: detected {current?.width}×{current?.height}, selected slot is {dimensions.width}×{dimensions.height}.</span>}
+      {!value.trim() && <span className="text-xs text-muted-foreground">Paste a snippet to validate it.</span>}
+    </div>
+    <Dialog>
+      <DialogTrigger render={<Button type="button" variant="outline" size="sm" disabled={!current?.ok} />}>Preview</DialogTrigger>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{network} {size} preview</DialogTitle>
+          <DialogDescription>This preview uses the sanitized snippet in a sandboxed frame.</DialogDescription>
+        </DialogHeader>
+        <iframe title={`${network} ${size} ad preview`} srcDoc={previewDocument} sandbox="allow-scripts allow-popups" className="h-[360px] w-full rounded-lg border border-border bg-background" />
+      </DialogContent>
+    </Dialog>
+  </div>
+}
+
+function detectScriptHost(value: string) {
+  let candidate = value.trim()
+  if (/^<script\b/i.test(candidate)) {
+    const tag = candidate.match(/^<script\b([^>]*)>\s*<\/script\s*>$/i)
+    const src = tag?.[1].match(/(?:^|\s)src\s*=\s*(["'])(.*?)\1/i)
+    if (!src) return ''
+    candidate = src[2]
+  }
+  try {
+    const url = new URL(candidate.startsWith('//') ? `https:${candidate}` : candidate)
+    return url.protocol === 'https:' && !url.username && !url.password && url.pathname.toLowerCase().endsWith('.js') ? url.host : ''
+  } catch { return '' }
+}
+
 function NetworkCard({ title, active, onToggle, children }: { title: string; active: boolean; onToggle: (active: boolean) => void; children: React.ReactNode }) {
   return <section className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card p-5"><div className="flex items-center justify-between"><h2 className="font-display text-lg font-bold">{title}</h2><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => onToggle(event.target.checked)} /> Active</label></div><Badge variant={active ? 'secondary' : 'outline'}>{active ? 'Configured' : 'Disabled'}</Badge>{children}</section>
 }
@@ -118,5 +182,6 @@ function CreativeField({ label, value, active, onValue, onActive }: { label: str
   return <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => onActive(event.target.checked)} />Active</label><label className="flex flex-col gap-1 text-xs text-muted-foreground">{label}<textarea value={value} onChange={(event) => onValue(event.target.value)} rows={2} className="rounded-lg border border-border bg-background p-3 text-sm text-foreground" /></label></div>
 }
 function UrlField({ label, value, active, onValue, onActive }: { label: string; value: string; active: boolean; onValue: (value: string) => void; onActive: (active: boolean) => void }) {
-  return <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => onActive(event.target.checked)} />Active</label><label className="flex flex-col gap-1 text-xs text-muted-foreground">{label}<input value={value} onChange={(event) => onValue(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground" /></label></div>
+  const host = detectScriptHost(value)
+  return <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => onActive(event.target.checked)} />Active</label><label className="flex flex-col gap-1 text-xs text-muted-foreground">{label}<input value={value} onChange={(event) => onValue(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground" /></label>{host && <p className="text-xs text-muted-foreground">Host: {host}. Add this host to the AD_SCRIPT_HOSTS project variable and redeploy, otherwise the browser will block it</p>}</div>
 }

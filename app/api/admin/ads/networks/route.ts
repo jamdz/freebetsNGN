@@ -7,15 +7,18 @@ import { saveIntegration } from '@/lib/server/integrations'
 import type { AdPage } from '@/lib/ad-settings'
 import { AD_PAGES, safeCreative, safeScriptUrl } from '@/lib/server/ads'
 import { isHttpsUrl } from '@/lib/server/ads'
+import { isAadsUnitId, parseAdSnippet } from '@/lib/server/ad-snippets'
 
 const sizeRecord = <T extends z.ZodTypeAny>(value: T) => z.object({ '320x100': value, '300x250': value, '728x90': value })
-const creative = z.string().max(2048).refine((value) => !value || Boolean(safeCreative(value)), 'Use a single HTTPS script/iframe tag or an HTTPS URL')
-const scriptUrl = z.string().max(2048).refine((value) => !value || Boolean(safeScriptUrl(value)), 'Use an HTTPS script URL')
+const creative = z.string().max(8192).refine((value) => !value || Boolean(safeCreative(value)), 'Use a single HTTPS script/iframe tag or an HTTPS URL')
+const bannerSnippet = z.string().max(8192).refine((value) => !value || parseAdSnippet(value).ok, 'Paste a supported ad snippet')
+const aadsUnit = z.string().max(8192).refine((value) => !value || isAadsUnitId(value) || parseAdSnippet(value).ok, 'Use a 3–12 digit A-ADS unit ID or a supported ad snippet')
+const scriptUrl = z.string().max(2048).refine((value) => !value || Boolean(safeScriptUrl(value)), 'Use an HTTPS .js script URL or full script tag')
 const schema = z.object({
   previewMode: z.boolean(),
   networks: z.object({
-    aads: z.object({ active: z.boolean(), units: sizeRecord(z.string().max(128)), unitActive: sizeRecord(z.boolean()) }),
-    adsterra: z.object({ active: z.boolean(), banner: sizeRecord(creative), bannerActive: sizeRecord(z.boolean()), native: creative, nativeActive: z.boolean(), socialBar: scriptUrl, socialBarActive: z.boolean(), popunder: scriptUrl, popunderActive: z.boolean(), smartlink: z.string().max(2048).refine((value) => !value || (Boolean(safeCreative(value)?.kind === 'url')), 'Use an HTTPS smartlink URL'), smartlinkActive: z.boolean() }),
+    aads: z.object({ active: z.boolean(), units: sizeRecord(aadsUnit), unitActive: sizeRecord(z.boolean()) }),
+    adsterra: z.object({ active: z.boolean(), banner: sizeRecord(bannerSnippet), bannerActive: sizeRecord(z.boolean()), native: creative, nativeActive: z.boolean(), socialBar: scriptUrl, socialBarActive: z.boolean(), popunder: scriptUrl, popunderActive: z.boolean(), smartlink: z.string().max(2048).refine((value) => !value || (Boolean(safeCreative(value)?.kind === 'url')), 'Use an HTTPS smartlink URL'), smartlinkActive: z.boolean() }),
   }),
   offerwall: z.object({ active: z.boolean(), provider: z.string().trim().min(1).max(80), appId: z.string().trim().max(200), embedUrl: z.string().trim().max(2048).refine((value) => !value || (value.includes('{userId}') && isHttpsUrl(value.replaceAll('{userId}', 'test-user'))), 'Use an HTTPS embed template containing {userId}'), rewardShare: z.number().min(0).max(100), holdDays: z.number().int().min(0).max(365), fxRate: z.number().positive().max(1_000_000) }),
   popunder: z.object({ enabled: z.boolean(), frequencyMinutes: z.number().int().min(1).max(1440), pages: z.array(z.enum(AD_PAGES as [AdPage, ...AdPage[]])).max(AD_PAGES.length) }),
@@ -48,7 +51,7 @@ export async function PUT(request: Request) {
   const db = auth.supabase
   try {
     const aadsConfig = { units: input.networks.aads.units, unitActive: input.networks.aads.unitActive }
-    const adsterraConfig = { ...input.networks.adsterra, previewMode: input.previewMode, popunderSettings: input.popunder }
+    const adsterraConfig = { ...input.networks.adsterra, socialBar: safeScriptUrl(input.networks.adsterra.socialBar), popunder: safeScriptUrl(input.networks.adsterra.popunder), previewMode: input.previewMode, popunderSettings: input.popunder }
     const { error: networkError } = await db.from('ad_networks').upsert([
       { id: 'aads', enabled: input.networks.aads.active, config: aadsConfig, updated_at: new Date().toISOString() },
       { id: 'adsterra', enabled: input.networks.adsterra.active, config: adsterraConfig, updated_at: new Date().toISOString() },

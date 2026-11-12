@@ -2,12 +2,12 @@
 
 import Script from 'next/script'
 import { usePathname } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { adPageFromPath, type AdNetwork, type AdPage, type AdPosition, type AdSize } from '@/lib/ad-settings'
 import { useAdConsent } from '@/components/ads/AdSlot'
 
-type SlotConfig = { position: AdPosition; network: AdNetwork; size: AdSize; unitId: string; creative: null | { kind: 'url' | 'script' | 'iframe'; src: string } }
+type SlotConfig = { position: AdPosition; network: AdNetwork; size: AdSize; index: number }
 type AdConfig = { page: AdPage | null; consent: boolean; enabled: boolean; previewMode: boolean; slots: SlotConfig[]; globalScripts?: { socialBar: string; popunder: string; popunderFrequencyMinutes: number; popunderPages: AdPage[] } }
 const fetcher = async (url: string): Promise<AdConfig> => {
   const response = await fetch(url, { cache: 'no-store' })
@@ -16,41 +16,18 @@ const fetcher = async (url: string): Promise<AdConfig> => {
 }
 const sizes: Record<AdSize, { width: number; height: number }> = { '320x100': { width: 320, height: 100 }, '300x250': { width: 300, height: 250 }, '728x90': { width: 728, height: 90 } }
 
-function AdFrame({ slot, pathname, previewMode }: { slot: SlotConfig; pathname: string; previewMode: boolean }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [near, setNear] = useState(false)
+function AdFrame({ slot, pathname, page, previewMode }: { slot: SlotConfig; pathname: string; page: AdPage; previewMode: boolean }) {
   const dimensions = sizes[slot.size]
-  useEffect(() => {
-    setNear(false)
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) { setNear(true); observer.disconnect() }
-    }, { rootMargin: '200px' })
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [pathname])
-  const configuredCreative = slot.network === 'A-ADS' && slot.unitId ? { kind: 'iframe' as const, src: `https://a-ads.com/${encodeURIComponent(slot.unitId)}` } : slot.creative
-  const creative = configuredCreative?.kind === 'url' ? { kind: 'iframe' as const, src: configuredCreative.src } : configuredCreative
-  const active = Boolean(creative) && !previewMode
-  return <div ref={ref} className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-border/60 bg-card/40 px-3 py-3" style={{ minHeight: dimensions.height + 42 }} aria-label="Advertisement placement">
+  return <div className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-border/60 bg-card/40 px-3 py-3" style={{ minHeight: dimensions.height + 42 }} aria-label="Advertisement placement">
     <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Advertisement</span>
-    {near && active && creative?.kind === 'iframe' && <iframe key={`${pathname}-${slot.network}-${slot.size}`} title="Advertisement" src={creative.src} width={dimensions.width} height={dimensions.height} loading="lazy" className="max-w-full rounded-xl border-0" sandbox="allow-scripts allow-same-origin" />}
-    {near && active && creative?.kind === 'script' && <CreativeScript key={`${pathname}-${creative.src}`} src={creative.src} />}
-    {(!active || !near || previewMode) && <div aria-hidden="true" className="flex w-full max-w-full items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/60 px-4 text-center text-xs text-muted-foreground" style={{ height: dimensions.height }}>{previewMode ? `Preview mode · ${slot.network} · ${slot.size}` : active ? 'Advertisement' : 'Ad space unavailable'}</div>}
+    {previewMode
+      ? <div aria-hidden="true" className="flex w-full max-w-full items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/60 px-4 text-center text-xs text-muted-foreground" style={{ height: dimensions.height }}>{`Preview mode · ${slot.network} · ${slot.size}`}</div>
+      : <iframe key={pathname} title="Advertisement" src={`/ad-frame?page=${encodeURIComponent(page)}&slot=${slot.index}`} width={dimensions.width} height={dimensions.height} loading="lazy" className="max-w-full rounded-xl border-0" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" />}
   </div>
 }
 
-function CreativeScript({ src }: { src: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const host = ref.current
-    if (!host) return
-    const script = document.createElement('script')
-    script.src = src
-    script.async = true
-    host.appendChild(script)
-    return () => { script.remove(); host.replaceChildren() }
-  }, [src])
-  return <div ref={ref} className="w-full" />
+function EmptyAdPlacement() {
+  return <div className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-border/60 bg-card/40 px-3 py-3" style={{ minHeight: 132 }} aria-label="Advertisement placement"><span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Advertisement</span><div aria-hidden="true" className="flex w-full max-w-full items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/60 px-4 text-center text-xs text-muted-foreground" style={{ height: 90 }}>Ad space unavailable</div></div>
 }
 
 export function AdManager({ children }: { children: React.ReactNode }) {
@@ -89,17 +66,16 @@ export function AdManager({ children }: { children: React.ReactNode }) {
   }, [consent, data, modalOpen, page, popunderUrl])
 
   if (!page || consent !== true) return <>{children}</>
-  const placeholderSlot: SlotConfig = { position: 'inline', network: 'A-ADS', size: '728x90', unitId: '', creative: null }
   return <section className="w-full">
-    {data?.consent && data.enabled && grouped('top').map((slot, index) => <AdFrame key={`${pathname}-top-${index}`} slot={slot} pathname={pathname} previewMode={Boolean(data.previewMode)} />)}
+    {data?.consent && data.enabled && grouped('top').map((slot, index) => <AdFrame key={`${pathname}-top-${index}`} slot={slot} pathname={pathname} page={page} previewMode={Boolean(data.previewMode)} />)}
     <div className="mx-auto grid w-full max-w-6xl gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
       <main className="min-h-[calc(100vh-4rem)] min-w-0 px-4 pb-24 pt-5 md:pb-8">{children}</main>
-      {data?.consent && data.enabled && grouped('sidebar').length > 0 && <aside className="hidden flex-col gap-4 pt-5 lg:flex" aria-label="Sponsored content">{grouped('sidebar').map((slot, index) => <AdFrame key={`${pathname}-sidebar-${index}`} slot={slot} pathname={pathname} previewMode={Boolean(data.previewMode)} />)}</aside>}
+      {data?.consent && data.enabled && grouped('sidebar').length > 0 && <aside className="hidden flex-col gap-4 pt-5 lg:flex" aria-label="Sponsored content">{grouped('sidebar').map((slot, index) => <AdFrame key={`${pathname}-sidebar-${index}`} slot={slot} pathname={pathname} page={page} previewMode={Boolean(data.previewMode)} />)}</aside>}
     </div>
-    {data?.consent && data.enabled && grouped('inline').map((slot, index) => <AdFrame key={`${pathname}-inline-${index}`} slot={slot} pathname={pathname} previewMode={Boolean(data.previewMode)} />)}
-    {data?.consent && data.enabled && grouped('bottom').map((slot, index) => <AdFrame key={`${pathname}-bottom-${index}`} slot={slot} pathname={pathname} previewMode={Boolean(data.previewMode)} />)}
+    {data?.consent && data.enabled && grouped('inline').map((slot, index) => <AdFrame key={`${pathname}-inline-${index}`} slot={slot} pathname={pathname} page={page} previewMode={Boolean(data.previewMode)} />)}
+    {data?.consent && data.enabled && grouped('bottom').map((slot, index) => <AdFrame key={`${pathname}-bottom-${index}`} slot={slot} pathname={pathname} page={page} previewMode={Boolean(data.previewMode)} />)}
     {data?.consent && !data.previewMode && !modalOpen && socialBar && <Script id="adsterra-social-bar" src={socialBar} strategy="lazyOnload" />}
     {data?.consent && !data.previewMode && !modalOpen && popunderAllowed && popunderUrl && <Script id="adsterra-popunder" src={popunderUrl} strategy="lazyOnload" />}
-    {data?.consent && !modalOpen && slots.length === 0 && <AdFrame key={`${pathname}-empty-slot`} slot={placeholderSlot} pathname={pathname} previewMode={Boolean(data.previewMode)} />}
+    {data?.consent && !modalOpen && slots.length === 0 && <EmptyAdPlacement />}
   </section>
 }

@@ -45,6 +45,7 @@ export async function proxy(request: NextRequest) {
     rewrite.pathname = `/console-internal${target}`
     return NextResponse.rewrite(rewrite)
   }
+  if (pathname === '/ad-frame') return NextResponse.next()
 
   const { response, user } = await updateSession(request)
   if (pathname.startsWith('/api/')) {

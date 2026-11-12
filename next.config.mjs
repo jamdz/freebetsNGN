@@ -16,6 +16,10 @@ const adHosts = [
   'https://*.adgem.com',
 ]
 const analyticsHosts = ['https://www.googletagmanager.com', 'https://www.google-analytics.com']
+const customAdScriptHosts = (process.env.AD_SCRIPT_HOSTS ?? '').split(',').map((host) => host.trim()).filter(Boolean).flatMap((value) => {
+  const host = value.replace(/^https:\/\//i, '').replace(/\/+$/, '')
+  return /^(?:\*\.)?[a-z0-9.-]+(?::\d+)?$/i.test(host) ? [`https://${host}`] : []
+})
 const developmentScriptSources = process.env.NODE_ENV === 'development' ? ["'unsafe-eval'"] : []
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -23,7 +27,7 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "form-action 'self'",
   "frame-ancestors 'self'",
-  `script-src 'self' 'unsafe-inline' ${developmentScriptSources.join(' ')} ${[...analyticsHosts, ...adHosts].join(' ')}`,
+  `script-src 'self' 'unsafe-inline' ${developmentScriptSources.join(' ')} ${[...analyticsHosts, ...adHosts, ...customAdScriptHosts].join(' ')}`,
   `style-src 'self' 'unsafe-inline'`,
   `img-src 'self' data: blob: ${supabaseOrigin} ${adHosts.join(' ')}`,
   `font-src 'self' data:`,
@@ -44,7 +48,7 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }]
+    return [{ source: '/((?!ad-frame).*)', headers: securityHeaders }]
   },
   images: { formats: ['image/avif', 'image/webp'] },
 }
