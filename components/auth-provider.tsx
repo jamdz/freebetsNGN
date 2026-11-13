@@ -7,7 +7,7 @@ import { lagosDate } from '@/lib/dates'
 type Credentials = { id?: string; email?: string; nickname?: string; phone?: string; password?: string; rewardBalanceNaira?: number; referralCode?: string; campaignCode?: string; emailVerified?: boolean; phoneVerified?: boolean; status?: string; streakCount?: number }
 type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (data: Credentials) => Promise<void>; signIn: (data: Credentials) => Promise<boolean>; signOut: () => Promise<void>; verifyOtp: (otp: string) => Promise<boolean> }
 const AuthContext = createContext<AuthContextValue | null>(null)
-const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/reset-password', '/terms', '/privacy', '/prize-rules', '/responsible-play']
+const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/reset-password', '/ad-verification', '/terms', '/privacy', '/prize-rules', '/responsible-play']
 
 function isAdminPathname(pathname: string) {
   const normalized = pathname.toLowerCase()
