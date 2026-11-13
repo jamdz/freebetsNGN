@@ -5,9 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import { lagosDate } from '@/lib/dates'
 
 type Credentials = { id?: string; email?: string; nickname?: string; phone?: string; password?: string; rewardBalanceNaira?: number; referralCode?: string; campaignCode?: string; emailVerified?: boolean; phoneVerified?: boolean; status?: string; streakCount?: number }
-type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (data: Credentials) => Promise<void>; signIn: (data: Credentials) => Promise<boolean>; signOut: () => Promise<void>; verifyOtp: (otp: string) => Promise<boolean>; resetPassword: (phone: string, password: string) => Promise<boolean> }
+type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (data: Credentials) => Promise<void>; signIn: (data: Credentials) => Promise<boolean>; signOut: () => Promise<void>; verifyOtp: (otp: string) => Promise<boolean> }
 const AuthContext = createContext<AuthContextValue | null>(null)
-const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/terms', '/privacy', '/prize-rules', '/responsible-play']
+const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/reset-password', '/terms', '/privacy', '/prize-rules', '/responsible-play']
 
 function isAdminPathname(pathname: string) {
   const normalized = pathname.toLowerCase()
@@ -42,8 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (data: Credentials) => { const resolve = await fetch('/api/auth/resolve-identifier', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identifier: data.nickname }) }); if (!resolve.ok) return false; const details = await resolve.json(); if (details.status === 'banned' || details.status === 'suspended') return false; const { error } = await getSupabase().auth.signInWithPassword({ email: details.email, password: data.password! }); if (error) return false; const { data: { session } } = await getSupabase().auth.getSession(); const next = await refreshUser(session?.access_token); if (!next) { await getSupabase().auth.signOut(); return false } recordVisit(); router.push('/home'); return true }
   const signOut = async () => { await getSupabase().auth.signOut(); setUser(null); router.replace('/login') }
   const verifyOtp = async (otp: string) => { const response = await fetch('/api/auth/verify-phone', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: otp }) }); if (!response.ok) return false; await refreshUser(); router.push('/home'); return true }
-  const resetPassword = async () => false
-  const value = useMemo(() => ({ user, ready, signUp, signIn, signOut, verifyOtp, resetPassword }), [user, ready])
+  const value = useMemo(() => ({ user, ready, signUp, signIn, signOut, verifyOtp }), [user, ready])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 export function useAuth() { const context = useContext(AuthContext); if (!context) throw new Error('useAuth must be used within AuthProvider'); return context }
