@@ -3,6 +3,13 @@ import { ADMIN_COOKIE, adminCookieOptions, createAdminSession, isAdminConfigured
 import { decryptTotpSecret, isAdminLoginLocked, recordAdminLoginFailure } from '@/lib/admin-security'
 import { verify } from 'otplib'
 
+type LoginFailureStage = 'lockout-check' | 'credential-verification' | 'failure-audit' | 'session-persistence'
+
+function unavailable(stage: LoginFailureStage) {
+  console.error('[admin-login] dependency unavailable', { stage })
+  return NextResponse.json({ error: 'Admin login is temporarily unavailable' }, { status: 503 })
+}
+
 export async function POST(request: Request) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown'
   const body = await request.json().catch(() => ({}))
@@ -12,12 +19,12 @@ export async function POST(request: Request) {
   const isPreview = process.env.NODE_ENV !== 'production'
   if (!isPreview) {
     try { if (await isAdminLoginLocked(email, ip)) return NextResponse.json({ error: 'Too many login attempts. Try again later.' }, { status: 429 }) }
-    catch { return NextResponse.json({ error: 'Admin login is temporarily unavailable' }, { status: 503 }) }
+    catch { return unavailable('lockout-check') }
   }
   if (!isAdminConfigured()) return NextResponse.json({ error: 'Admin login is not configured' }, { status: 503 })
   let credentials
   try { credentials = await verifyAdminCredentials(email, password) }
-  catch { return NextResponse.json({ error: 'Admin login is temporarily unavailable' }, { status: 503 }) }
+  catch { return unavailable('credential-verification') }
   let valid = credentials.valid
   if (valid && credentials.admin?.totp_secret_ciphertext) {
     try {
@@ -27,12 +34,12 @@ export async function POST(request: Request) {
   }
   if (!valid) {
     try { await recordAdminLoginFailure(email, ip) }
-    catch { return NextResponse.json({ error: 'Admin login is temporarily unavailable' }, { status: 503 }) }
+    catch { return unavailable('failure-audit') }
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
   }
   let cookie: string
   try { cookie = await createAdminSession(credentials.email, request) }
-  catch { return NextResponse.json({ error: 'Admin login is temporarily unavailable' }, { status: 503 }) }
+  catch { return unavailable('session-persistence') }
   const response = NextResponse.json({ ok: true, requiresTotp: false })
   response.cookies.set(ADMIN_COOKIE, cookie, adminCookieOptions)
   return response
