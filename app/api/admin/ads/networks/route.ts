@@ -57,9 +57,12 @@ export async function PUT(request: Request) {
       { id: 'adsterra', enabled: input.networks.adsterra.active, config: adsterraConfig, updated_at: new Date().toISOString() },
     ], { onConflict: 'id' })
     if (networkError) throw networkError
-    const { error: integrationError } = await db.from('integration_settings').select('key').eq('key', 'offerwall_adgem').maybeSingle()
+    const { data: existingIntegration, error: integrationError } = await db.from('integration_settings').select('key,public_config').eq('key', 'offerwall_adgem').maybeSingle()
     if (integrationError) throw integrationError
-    const publicConfig = { provider: input.offerwall.provider, appId: input.offerwall.appId, embedUrlTemplate: input.offerwall.embedUrl, rewardShare: input.offerwall.rewardShare, holdDays: input.offerwall.holdDays, fxRate: input.offerwall.fxRate }
+    const existingPublicConfig = existingIntegration?.public_config && typeof existingIntegration.public_config === 'object' && !Array.isArray(existingIntegration.public_config)
+      ? existingIntegration.public_config as Record<string, unknown>
+      : {}
+    const publicConfig = { ...existingPublicConfig, provider: input.offerwall.provider, appId: input.offerwall.appId, embedUrlTemplate: input.offerwall.embedUrl, rewardShare: input.offerwall.rewardShare, holdDays: input.offerwall.holdDays, fxRate: input.offerwall.fxRate }
     if (input.postbackSecret?.trim()) {
       await saveIntegration('offerwall_adgem', { publicConfig, secrets: { postbackSecret: input.postbackSecret.trim() }, isActive: input.offerwall.active }, process.env.ADMIN_EMAIL ?? 'admin')
     } else {
