@@ -6,8 +6,10 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export const ADMIN_COOKIE = 'freebet_admin_session'
 const SESSION_TTL = 2 * 60 * 60 * 1000
+export const ADMIN_STATELESS_SESSION_TTL_SECONDS = SESSION_TTL / 1000
 
-type SessionPayload = { email: string; token: string }
+type SessionPayload = { email: string; token: string; mode?: 'stateless'; expiresAt?: number }
+type CreatedAdminSession = { cookie: string; stateless: boolean }
 
 function adminConfig() {
   const sessionSecret = process.env.ADMIN_SESSION_SECRET?.trim()
@@ -18,6 +20,10 @@ function adminConfig() {
 export function isAdminConfigured() { return adminConfig().valid }
 function secret() { const configured = adminConfig().sessionSecret; if (!configured) throw new Error('Admin is not configured'); return configured }
 function sign(value: string) { return createHmac('sha256', secret()).update(value).digest('base64url') }
+function signSession(payload: SessionPayload) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  return `${encoded}.${sign(encoded)}`
+}
 function validSignature(value: string, signature: string) {
   const expected = sign(value)
   return expected.length === signature.length && timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
@@ -28,7 +34,10 @@ function decode(value?: string | null): SessionPayload | null {
   if (!payload || !signature || extra.length || !validSignature(payload, signature)) return null
   try {
     const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as SessionPayload
-    return typeof parsed.email === 'string' && typeof parsed.token === 'string' ? parsed : null
+    if (typeof parsed.email !== 'string' || typeof parsed.token !== 'string') return null
+    if (parsed.mode !== undefined && parsed.mode !== 'stateless') return null
+    if (parsed.mode === 'stateless' && (typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt))) return null
+    return parsed
   } catch { return null }
 }
 function supabase() {
@@ -72,21 +81,35 @@ export async function verifyReauthPassword(email: string, password: string) {
   return email.toLowerCase() === process.env.ADMIN_EMAIL?.trim().toLowerCase() && verifyAdminPassword(password)
 }
 
-export async function createAdminSession(email: string, request: Request) {
+function createStatelessAdminSession(email: string): CreatedAdminSession {
+  const cookie = signSession({
+    email: email.trim().toLowerCase(),
+    token: randomBytes(32).toString('base64url'),
+    mode: 'stateless',
+    expiresAt: Date.now() + SESSION_TTL,
+  })
+  return { cookie, stateless: true }
+}
+
+export async function createAdminSession(email: string, request: Request): Promise<CreatedAdminSession> {
   const token = randomBytes(32).toString('base64url')
   const hash = tokenHash(token)
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown'
   const userAgent = request.headers.get('user-agent')?.slice(0, 512) || null
   const now = new Date().toISOString()
-  const { error } = await supabase().from('admin_sessions').insert({ token_hash: hash, ip, user_agent: userAgent, created_at: now, last_seen_at: now })
-  if (error) throw new Error('ADMIN_SESSION_CREATE_FAILED')
-  const payload = Buffer.from(JSON.stringify({ email: email.trim().toLowerCase(), token })).toString('base64url')
-  return `${payload}.${sign(payload)}`
+  try {
+    const { error } = await supabase().from('admin_sessions').insert({ token_hash: hash, ip, user_agent: userAgent, created_at: now, last_seen_at: now })
+    if (!error) return { cookie: signSession({ email: email.trim().toLowerCase(), token }), stateless: false }
+    console.error('[admin-auth] admin session persistence failed; using stateless fallback', { code: error.code ?? 'unknown' })
+  } catch {
+    console.error('[admin-auth] admin session persistence failed; using stateless fallback', { code: 'unknown' })
+  }
+  return createStatelessAdminSession(email)
 }
 
 export async function revokeAdminSession(value?: string | null) {
   const payload = decode(value)
-  if (!payload) return
+  if (!payload || payload.mode === 'stateless') return
   await supabase().from('admin_sessions').update({ revoked_at: new Date().toISOString() }).eq('token_hash', tokenHash(payload.token)).is('revoked_at', null)
 }
 
@@ -100,6 +123,7 @@ export async function verifyAdminSession(value?: string | null) {
   if (admins?.length) {
     if (!admins.some((admin) => admin.is_active && admin.email?.toLowerCase() === payload.email.toLowerCase())) return false
   } else if (payload.email !== process.env.ADMIN_EMAIL?.trim().toLowerCase()) return false
+  if (payload.mode === 'stateless') return Date.now() < (payload.expiresAt ?? 0)
   const { data: session, error } = await db.from('admin_sessions').select('id,last_seen_at,revoked_at').eq('token_hash', hash).maybeSingle()
   if (error || !session || session.revoked_at) return false
   const lastSeen = Date.parse(session.last_seen_at)
