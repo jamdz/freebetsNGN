@@ -9,6 +9,11 @@ type AuthContextValue = { user: Credentials | null; ready: boolean; signUp: (dat
 const AuthContext = createContext<AuthContextValue | null>(null)
 const publicRoutes = ['/', '/login', '/signup', '/verify', '/forgot-password', '/terms', '/privacy', '/prize-rules', '/responsible-play']
 
+function isAdminPathname(pathname: string) {
+  const normalized = pathname.toLowerCase()
+  return normalized === '/console-internal' || normalized.startsWith('/console-internal/') || normalized.split('/').includes('admin')
+}
+
 async function loadStatus(accessToken?: string) {
   const response = await fetch('/api/auth/status', { cache: 'no-store', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined })
   if (!response.ok) return null
@@ -19,11 +24,19 @@ async function loadStatus(accessToken?: string) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Credentials | null>(null)
   const [ready, setReady] = useState(false)
-  const router = useRouter(); const pathname = usePathname(); const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  const router = useRouter(); const pathname = usePathname(); const isAdminRoute = isAdminPathname(pathname); const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
   const getSupabase = () => { if (!supabaseRef.current) supabaseRef.current = createClient(); return supabaseRef.current }
   const refreshUser = async (accessToken?: string) => { const next = await loadStatus(accessToken); setUser(next); return next }
-  useEffect(() => { let mounted = true; getSupabase().auth.getSession().then(async ({ data }) => { if (mounted && data.session) await refreshUser(); if (mounted) setReady(true) }); const { data: subscription } = getSupabase().auth.onAuthStateChange(async (event, session) => { if (!mounted) return; if (session) await refreshUser(); else setUser(null); setReady(true) }); return () => { mounted = false; subscription.subscription.unsubscribe() } }, [])
-  useEffect(() => { if (!ready) return; const isPublic = publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)); const isAdminRoute = pathname !== '/login' && pathname.endsWith('/login'); if (!user && !isPublic && !isAdminRoute) router.replace('/login'); if (user && ['/login','/signup'].includes(pathname)) router.replace('/home') }, [pathname, ready, user, router])
+  useEffect(() => {
+    if (isAdminRoute) { setUser(null); setReady(false); return }
+    setReady(false)
+    let mounted = true
+    const supabase = getSupabase()
+    supabase.auth.getSession().then(async ({ data }) => { if (mounted && data.session) await refreshUser(); if (mounted) setReady(true) })
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (event, session) => { if (!mounted) return; if (session) await refreshUser(); else setUser(null); setReady(true) })
+    return () => { mounted = false; subscription.subscription.unsubscribe() }
+  }, [isAdminRoute])
+  useEffect(() => { if (!ready || isAdminRoute) return; const isPublic = publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)); if (!user && !isPublic) router.replace('/login'); if (user && ['/login','/signup'].includes(pathname)) router.replace('/home') }, [pathname, isAdminRoute, ready, user, router])
   const recordVisit = () => { const key = `freebet-visit-${lagosDate(new Date())}`; if (sessionStorage.getItem(key)) return; void fetch('/api/visit', { method: 'POST' }).then((response) => { if (response.ok) sessionStorage.setItem(key, '1') }) }
   const signUp = async (data: Credentials) => { const { error } = await getSupabase().auth.signUp({ email: data.email!, password: data.password!, options: { emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`, data: { nickname: data.nickname, phone: data.phone, referralCode: data.referralCode?.trim().toUpperCase() || null, campaignCode: data.campaignCode?.trim().toUpperCase() || null } } }); if (error) throw new Error(error.message.includes('rate') ? 'Too many attempts. Please try again later.' : 'Unable to create account. Check your details and try again.'); router.push(`/verify?email=${encodeURIComponent(data.email!)}`) }
   const signIn = async (data: Credentials) => { const resolve = await fetch('/api/auth/resolve-identifier', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ identifier: data.nickname }) }); if (!resolve.ok) return false; const details = await resolve.json(); if (details.status === 'banned' || details.status === 'suspended') return false; const { error } = await getSupabase().auth.signInWithPassword({ email: details.email, password: data.password! }); if (error) return false; const { data: { session } } = await getSupabase().auth.getSession(); const next = await refreshUser(session?.access_token); if (!next) { await getSupabase().auth.signOut(); return false } recordVisit(); router.push('/home'); return true }
