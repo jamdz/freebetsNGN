@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ADMIN_COOKIE, adminCookieOptions, createAdminSession, isAdminConfigured, verifyAdminCredentials } from '@/lib/admin-auth'
+import { ADMIN_COOKIE, ADMIN_STATELESS_SESSION_TTL_SECONDS, adminCookieOptions, createAdminSession, isAdminConfigured, verifyAdminCredentials } from '@/lib/admin-auth'
 import { decryptTotpSecret, isAdminLoginLocked, recordAdminLoginFailure } from '@/lib/admin-security'
 import { verify } from 'otplib'
 
@@ -37,10 +37,11 @@ export async function POST(request: Request) {
     catch { return unavailable('failure-audit') }
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
   }
-  let cookie: string
-  try { cookie = await createAdminSession(credentials.email, request) }
+  let session: Awaited<ReturnType<typeof createAdminSession>>
+  try { session = await createAdminSession(credentials.email, request) }
   catch { return unavailable('session-persistence') }
   const response = NextResponse.json({ ok: true, requiresTotp: false })
-  response.cookies.set(ADMIN_COOKIE, cookie, adminCookieOptions)
+  const cookieOptions = session.stateless ? { ...adminCookieOptions, maxAge: ADMIN_STATELESS_SESSION_TTL_SECONDS } : adminCookieOptions
+  response.cookies.set(ADMIN_COOKIE, session.cookie, cookieOptions)
   return response
 }
