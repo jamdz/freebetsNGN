@@ -1,19 +1,96 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { readAdSettings } from '@/lib/server/ads'
 import { getIntegration } from '@/lib/server/integrations'
-import { z } from 'zod'
-const postbackSchema=z.object({user_id:z.string().uuid(),payout_usd:z.coerce.number().positive(),status:z.string().optional(),transaction_id:z.string().optional(),signature:z.string().optional()})
-function safePostbackLogPayload(payload: unknown) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { payload_type: typeof payload }
-  const value = payload as Record<string, unknown>
-  return {
-    user_id: typeof value.user_id === 'string' ? value.user_id : undefined,
-    payout_usd: Number.isFinite(Number(value.payout_usd)) ? Number(value.payout_usd) : undefined,
-    status: typeof value.status === 'string' ? value.status.slice(0, 40) : undefined,
-    transaction_id: typeof value.transaction_id === 'string' ? value.transaction_id.slice(0, 120) : undefined,
+import { processAdgemPostback, type AdgemCreditArguments, type AdgemPostbackResult } from '@/lib/server/adgem-postback'
+
+function plainText(body: string, status: number) {
+  return new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } })
+}
+
+async function logAttempt(result: AdgemPostbackResult, startedAt: number) {
+  try {
+    await createAdminClient().from('integration_logs').insert({
+      provider: 'offerwall_adgem',
+      event_type: 'offer_postback',
+      success: result.success,
+      response_status: result.status,
+      latency_ms: Date.now() - startedAt,
+      error_message: result.success ? null : result.reason,
+      response_summary: { status: result.success ? 'ok' : 'error', reason: result.reason },
+    })
+  } catch {
+    console.error('[postback] log failed')
   }
 }
-async function logAttempt(provider:string,payload:unknown,signatureOk:boolean,responseStatus:number){try{await createAdminClient().from('integration_logs').insert({provider,event_type:'offer_postback',payload:safePostbackLogPayload(payload),signature_ok:signatureOk,response_status:responseStatus})}catch{console.error('[postback] log failed')}}
-export async function POST(request:Request,{params}:{params:Promise<{provider:string}>}){const provider=(await params).provider;const payload=await request.json().catch(()=>null);const db=createAdminClient();const {data:settings}=await db.from('integration_settings').select('public_config').eq('key',`offerwall_${provider}`).maybeSingle();const config:any=settings?.public_config??{};const parsed=postbackSchema.safeParse(payload);if(provider==='adgem'&&request.headers.get('x-v0-postback-test')==='true'){if(process.env.NODE_ENV==='production'||!parsed.success)return NextResponse.json({error:'Unauthorized'},{status:401});try{const integration=await getIntegration('offerwall_adgem');const secret=integration.secrets.postbackSecret;const signature=request.headers.get('x-adgem-signature')??'';const expected=typeof secret==='string'&&secret?createHmac('sha256',secret).update(JSON.stringify(payload)).digest('hex'):'';const receivedBuffer=Buffer.from(signature);const expectedBuffer=Buffer.from(expected);const valid=Boolean(integration.isActive&&config.appId&&expected&&receivedBuffer.length===expectedBuffer.length&&timingSafeEqual(receivedBuffer,expectedBuffer));await logAttempt(provider,payload,valid,valid?200:401);if(!valid)return NextResponse.json({error:'Unauthorized'},{status:401});return NextResponse.json({ok:true,test:true,creditsIssued:false})}catch{return NextResponse.json({error:'Unauthorized'},{status:401})}}const signatureParam=String((payload as any)?.signature??request.headers.get('x-adgem-signature')??'');/* TODO: Implement the provider's documented signature algorithm before enabling production credits. */const signatureVerified=false;await logAttempt(provider,payload,signatureVerified,401);if(!parsed.success||!signatureParam||!config.appId)return NextResponse.json({error:'Unauthorized'},{status:401});return NextResponse.json({error:'Unauthorized'},{status:401})}
-export async function GET(request:Request,context:{params:Promise<{provider:string}>}){return POST(request,context)}
+
+function requestIp(request: Request) {
+  const realIp = request.headers.get('x-real-ip')?.trim()
+  if (realIp) return realIp
+  return request.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() ?? ''
+}
+
+export async function GET(request: Request, { params }: { params: Promise<{ provider: string }> }) {
+  const { provider } = await params
+  if (provider !== 'adgem') return plainText('Not found', 404)
+
+  const startedAt = Date.now()
+  const testOnly = process.env.NODE_ENV !== 'production' && request.headers.get('x-v0-postback-test') === 'true'
+  const db = createAdminClient()
+
+  try {
+    const [integration, settings] = await Promise.all([getIntegration('offerwall_adgem'), readAdSettings()])
+    const secret = typeof integration.secrets.postbackSecret === 'string' && integration.secrets.postbackSecret
+      ? integration.secrets.postbackSecret
+      : process.env.ADGEM_POSTBACK_KEY
+    if (!secret) {
+      const failure: AdgemPostbackResult = { status: 422, body: 'Error: postback key is not configured', success: false, signatureOk: false, reason: 'missing_key' }
+      await logAttempt(failure, startedAt)
+      return plainText(failure.body, failure.status)
+    }
+    if (!integration.isActive || !settings.offerwall.active) {
+      const failure: AdgemPostbackResult = { status: 403, body: 'Error: offerwall is inactive', success: false, signatureOk: false, reason: 'offerwall_inactive' }
+      await logAttempt(failure, startedAt)
+      return plainText(failure.body, failure.status)
+    }
+
+    const allowedIps = Array.isArray(integration.publicConfig.allowedIps)
+      ? (integration.publicConfig.allowedIps as unknown[]).filter((value: unknown): value is string => typeof value === 'string' && Boolean(value.trim())).map((value: string) => value.trim())
+      : []
+    if (!testOnly && allowedIps.length > 0 && !allowedIps.includes(requestIp(request))) {
+      const failure: AdgemPostbackResult = { status: 403, body: 'Error: IP is not allowed', success: false, signatureOk: false, reason: 'ip_not_allowed' }
+      await logAttempt(failure, startedAt)
+      return plainText(failure.body, failure.status)
+    }
+
+    const result = await processAdgemPostback(request.url, {
+      siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? '',
+      secret,
+      testOnly,
+      offerwall: settings.offerwall,
+      isActiveProfile: async (playerId) => {
+        const { data, error } = await db.from('profiles').select('id').eq('id', playerId).eq('status', 'active').maybeSingle()
+        if (error) throw error
+        return Boolean(data)
+      },
+      // AdGem's documented v2 and v3 postbacks do not define a reversal or chargeback signal.
+      // TODO: Add reverse_offer handling if AdGem documents a supported reversal event.
+      applyOfferPostback: async (args: AdgemCreditArguments) => {
+        const { data, error } = await db.rpc('apply_offer_postback', args)
+        if (error) throw error
+        const rpcResult = Array.isArray(data) ? data[0] : data
+        return { duplicate: Boolean(rpcResult && typeof rpcResult === 'object' && 'duplicate' in rpcResult && rpcResult.duplicate) }
+      },
+    })
+    await logAttempt(result, startedAt)
+    return plainText(result.body, result.status)
+  } catch {
+    const failure: AdgemPostbackResult = { status: 500, body: 'Error: unable to process postback', success: false, signatureOk: false, reason: 'processing_error' }
+    await logAttempt(failure, startedAt)
+    return plainText(failure.body, failure.status)
+  }
+}
+
+export async function POST() {
+  return NextResponse.json({ error: 'AdGem v2 postbacks must use GET' }, { status: 405, headers: { Allow: 'GET' } })
+}
