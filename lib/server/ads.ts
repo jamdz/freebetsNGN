@@ -1,9 +1,9 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { adPageFromPath, type AdPage, type AdSettings, type AdSize } from '@/lib/ad-settings'
+import { adPageFromPath, isValidPublicFormPlacement, PUBLIC_FORM_AD_LIMITS, type AdPage, type AdSettings, type AdSize } from '@/lib/ad-settings'
 import { safeGlobalScriptUrl } from '@/lib/server/ad-snippets'
 
-export const AD_PAGES: AdPage[] = ['Home', 'Fixtures', 'Predictions', 'Leaderboard', 'Rewards', 'Earn', 'Referrals', 'Profile', 'Spin']
+export const AD_PAGES: AdPage[] = ['Home', 'Fixtures', 'Predictions', 'Leaderboard', 'Rewards', 'Earn', 'Referrals', 'Profile', 'Spin', 'Landing', 'Login', 'Signup', 'Terms', 'Privacy', 'PrizeRules', 'ResponsiblePlay']
 export const AD_SIZES: AdSize[] = ['320x100', '300x250', '728x90', 'native']
 const emptyPlacements = () => Object.fromEntries(AD_PAGES.map((page) => [page, { enabled: false, slots: [] }])) as unknown as AdSettings['placements']
 const emptySizeValues = () => Object.fromEntries(AD_SIZES.map((size) => [size, ''])) as Record<AdSize, string>
@@ -58,7 +58,7 @@ export async function readAdSettings() {
         input,
         format,
         zoneId,
-        allowedPages: Array.isArray(config.allowedPages) ? config.allowedPages.filter((page: unknown): page is AdPage => AD_PAGES.includes(page as AdPage)) : [],
+        allowedPages: Array.isArray(config.allowedPages) ? config.allowedPages.filter((page: unknown): page is AdPage => AD_PAGES.includes(page as AdPage) && !PUBLIC_FORM_AD_LIMITS.pages.includes(page as typeof PUBLIC_FORM_AD_LIMITS.pages[number])) : [],
       }
     }
     if (row.id === 'adsterra') {
@@ -67,12 +67,14 @@ export async function readAdSettings() {
       const popunder = record(config.popunderSettings)
       if (popunder.enabled !== undefined) settings.popunder.enabled = Boolean(popunder.enabled)
       if (Number.isFinite(Number(popunder.frequencyMinutes))) settings.popunder.frequencyMinutes = Math.min(1440, Math.max(1, Number(popunder.frequencyMinutes)))
-      if (Array.isArray(popunder.pages)) settings.popunder.pages = popunder.pages.filter((page: unknown): page is AdPage => AD_PAGES.includes(page as AdPage))
+      if (Array.isArray(popunder.pages)) settings.popunder.pages = popunder.pages.filter((page: unknown): page is AdPage => AD_PAGES.includes(page as AdPage) && !PUBLIC_FORM_AD_LIMITS.pages.includes(page as typeof PUBLIC_FORM_AD_LIMITS.pages[number]))
     }
   }
   for (const row of placementsResult.data ?? []) {
     if (!AD_PAGES.includes(row.page_key as AdPage)) continue
-    settings.placements[row.page_key as AdPage] = { enabled: Boolean(row.enabled), slots: normalizeSlots(row.slots) }
+    const page = row.page_key as AdPage
+    const slots = normalizeSlots(row.slots)
+    settings.placements[page] = { enabled: Boolean(row.enabled), slots: PUBLIC_FORM_AD_LIMITS.pages.includes(page as typeof PUBLIC_FORM_AD_LIMITS.pages[number]) ? slots.filter((slot) => slot.position === PUBLIC_FORM_AD_LIMITS.position).slice(0, PUBLIC_FORM_AD_LIMITS.maxSlots) : slots }
   }
   const offerwall = record(offerwallResult.data?.public_config)
   settings.offerwall = {
@@ -121,22 +123,25 @@ export function publicAdConfig(settings: AdSettings, page: AdPage, consent: bool
   if (!consent) return { page, consent: false, enabled: false, previewMode: false, slots: [], smartlink: null }
   if (isSmartlinkSurface) return { page, consent: true, enabled: false, previewMode: false, slots: [], smartlink: smartlinkAllowed ? { href: safeCreative(settings.networks.adsterra.smartlink)!.src } : null }
   const placement = settings.placements[page]
-  const slots = placement?.slots.flatMap((slot, index) => {
-    if (!placement.enabled) return []
+  const configuredSlots = placement?.slots ?? []
+  const validFormPlacement = isValidPublicFormPlacement(page, configuredSlots)
+  const slots = configuredSlots.flatMap((slot, index) => {
+    if (!placement?.enabled || (PUBLIC_FORM_AD_LIMITS.pages.includes(page as typeof PUBLIC_FORM_AD_LIMITS.pages[number]) && (!validFormPlacement || slot.position !== PUBLIC_FORM_AD_LIMITS.position))) return []
     return [{ position: slot.position, network: slot.network, size: slot.size, index }]
-  }) ?? []
+  })
   const adsterra = settings.networks.adsterra
   const adcash = settings.networks.adcash
-  const socialBar = placement?.enabled && adsterra.active && adsterra.socialBarActive ? safeScriptUrl(adsterra.socialBar) : ''
-  const popunder = placement?.enabled && adsterra.active && settings.popunder.enabled && settings.popunder.pages.includes(page) && adsterra.popunderActive ? safeScriptUrl(adsterra.popunder) : ''
+  const isFormPage = PUBLIC_FORM_AD_LIMITS.pages.includes(page as typeof PUBLIC_FORM_AD_LIMITS.pages[number])
+  const socialBar = !isFormPage && placement?.enabled && adsterra.active && adsterra.socialBarActive ? safeScriptUrl(adsterra.socialBar) : ''
+  const popunder = !isFormPage && placement?.enabled && adsterra.active && settings.popunder.enabled && settings.popunder.pages.includes(page) && adsterra.popunderActive ? safeScriptUrl(adsterra.popunder) : ''
   return {
     page, consent: true, enabled: Boolean(placement?.enabled), previewMode: settings.previewMode, slots,
     globalScripts: {
       socialBar,
       popunder,
       popunderFrequencyMinutes: settings.popunder.frequencyMinutes,
-      popunderPages: settings.popunder.pages,
-      adcash: adcash.enabled && adcash.format && adcash.zoneId && adcash.allowedPages.includes(page)
+      popunderPages: settings.popunder.pages.filter((allowedPage) => !PUBLIC_FORM_AD_LIMITS.pages.includes(allowedPage as typeof PUBLIC_FORM_AD_LIMITS.pages[number])),
+      adcash: !isFormPage && adcash.enabled && adcash.format && adcash.zoneId && adcash.allowedPages.includes(page)
         ? { format: adcash.format, zoneId: adcash.zoneId }
         : null,
     },

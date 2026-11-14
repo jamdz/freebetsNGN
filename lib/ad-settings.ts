@@ -1,6 +1,10 @@
 export type AdNetwork = 'A-ADS' | 'Adsterra'
 export type AdSize = '320x100' | '300x250' | '728x90' | 'native'
-export type AdPage = 'Home' | 'Fixtures' | 'Predictions' | 'Leaderboard' | 'Rewards' | 'Earn' | 'Referrals' | 'Profile' | 'Spin'
+export type AdPage = 'Home' | 'Fixtures' | 'Predictions' | 'Leaderboard' | 'Rewards' | 'Earn' | 'Referrals' | 'Profile' | 'Spin' | 'Landing' | 'Login' | 'Signup' | 'Terms' | 'Privacy' | 'PrizeRules' | 'ResponsiblePlay'
+export const PUBLIC_FORM_AD_LIMITS = { pages: ['Login', 'Signup'] as const, maxSlots: 1, position: 'bottom' as const, globalScripts: false, reason: 'Ads above or beside a sign-in form reduce sign-ups and can look like phishing.' }
+export function isValidPublicFormPlacement(page: AdPage, slots: AdPlacementSlot[]) {
+  return !PUBLIC_FORM_AD_LIMITS.pages.includes(page as typeof PUBLIC_FORM_AD_LIMITS.pages[number]) || (slots.length <= PUBLIC_FORM_AD_LIMITS.maxSlots && slots.every((slot) => slot.position === PUBLIC_FORM_AD_LIMITS.position))
+}
 export type AdPosition = 'top' | 'inline' | 'bottom' | 'sidebar'
 export type AdPlacementSlot = { position: AdPosition; network: AdNetwork; size: AdSize }
 export type AdSettings = {
@@ -27,10 +31,12 @@ export type AdSettings = {
   popunder: { enabled: boolean; frequencyMinutes: number; pages: AdPage[] }
 }
 
-const blockedPath = (pathname: string) => /\/(?:login|signup|join|verify|forgot-password|reset-password|console-internal|admin)(?:\/|$)/i.test(pathname)
+const blockedPath = (pathname: string) => /\/(?:join|verify|forgot-password|reset-password|console-internal|admin)(?:\/|$)/i.test(pathname) || /^\/auth(?:\/|$)/i.test(pathname)
 
 export const adPageFromPath = (pathname: string): AdPage | null => {
   if (blockedPath(pathname)) return null
+  const publicPages: Record<string, AdPage> = { '/': 'Landing', '/login': 'Login', '/signup': 'Signup', '/terms': 'Terms', '/privacy': 'Privacy', '/prize-rules': 'PrizeRules', '/responsible-play': 'ResponsiblePlay' }
+  if (publicPages[pathname.toLowerCase()]) return publicPages[pathname.toLowerCase()]
   if (pathname.includes('/fixtures')) return 'Fixtures'
   if (pathname.includes('/leaderboard')) return 'Leaderboard'
   if (pathname.includes('/predictions')) return 'Predictions'
