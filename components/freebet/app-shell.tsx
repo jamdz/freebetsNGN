@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { formatNaira } from '@/lib/format'
-import { APP_NAME, NAV_ITEMS } from '@/lib/config'
+import { NAV_ITEMS } from '@/lib/config'
+import { BrandMark, useSiteBrand } from '@/components/site-brand'
 import { useAuth } from '@/components/auth-provider'
 import { AdManager } from '@/components/ads/AdManager'
 
@@ -15,15 +16,15 @@ const navRoutes = { Home: '/home', Fixtures: '/fixtures', Leaderboard: '/leaderb
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { siteName } = useSiteBrand()
   const initials = (user?.nickname || 'Player').slice(0, 2).toUpperCase()
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur">
         <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-3 px-4">
-          <Link href="/home" className="flex shrink-0 items-center gap-2" aria-label={APP_NAME}>
-            <span className="flex size-9 items-center justify-center rounded-xl bg-primary font-display text-lg font-black text-primary-foreground">F</span>
-            <span className="font-display text-xl font-bold tracking-tight">FreeBet<span className="text-primary">NGN</span></span>
+          <Link href="/home" className="flex shrink-0 items-center gap-2" aria-label={siteName}>
+            <BrandMark size="md" showName />
           </Link>
 
           <nav aria-label="Primary navigation" className="hidden min-w-0 flex-1 items-center gap-0 md:flex">
@@ -53,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <AdManager>{children}</AdManager>
 
-      <footer className="mx-auto flex max-w-6xl flex-col gap-2 border-t border-border/60 px-4 py-6 pb-24 text-xs text-muted-foreground md:pb-6"><div className="flex flex-wrap gap-x-4 gap-y-2"><Link href="/terms" className="hover:text-foreground">Terms</Link><Link href="/privacy" className="hover:text-foreground">Privacy</Link><Link href="/prize-rules" className="hover:text-foreground">Prize rules</Link><Link href="/responsible-play" className="hover:text-foreground">Responsible play</Link></div><p>18+ only. No stakes involved. Not affiliated with any league, club or broadcaster.</p></footer>\n\n      <nav aria-label="Mobile primary navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <footer className="mx-auto flex max-w-6xl flex-col gap-2 border-t border-border/60 px-4 py-6 pb-24 text-xs text-muted-foreground md:pb-6"><div className="flex flex-wrap gap-x-4 gap-y-2"><Link href="/terms" className="hover:text-foreground">Terms</Link><Link href="/privacy" className="hover:text-foreground">Privacy</Link><Link href="/prize-rules" className="hover:text-foreground">Prize rules</Link><Link href="/responsible-play" className="hover:text-foreground">Responsible play</Link></div><p>{siteName}. 18+ only. No stakes involved. Not affiliated with any league, club or broadcaster.</p></footer>\n\n      <nav aria-label="Mobile primary navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         <div className="mx-auto flex max-w-md items-center justify-around py-2">
           {NAV_ITEMS.map((item) => {
             const Icon = navIcons[item]

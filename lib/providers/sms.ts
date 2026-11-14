@@ -1,5 +1,6 @@
 import 'server-only'
 import { getIntegration } from '@/lib/server/integrations'
+import { getSiteSettings } from '@/lib/server/site-content'
 
 export type SmsSettings = {
   baseUrl: string
@@ -30,7 +31,7 @@ async function getSmsConfig() {
 }
 
 export async function sendVerificationSms(to: string, code: string, expiryMinutes: number) {
-  const { settings, apiKey, baseUrl } = await getSmsConfig()
+  const [{ settings, apiKey, baseUrl }, site] = await Promise.all([getSmsConfig(), getSiteSettings()])
   const endpoint = new URL('/api/sms/send', baseUrl)
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -39,7 +40,7 @@ export async function sendVerificationSms(to: string, code: string, expiryMinute
       api_key: apiKey,
       to,
       from: settings.senderId,
-      sms: `Your FreeBetNGN verification code is ${code}. It expires in ${expiryMinutes} minutes. Do not share this code.`,
+      sms: `Your ${site.siteName} verification code is ${code}. It expires in ${expiryMinutes} minutes. Do not share this code.`,
       channel: settings.channel ?? 'generic',
       type: 'plain',
     }),

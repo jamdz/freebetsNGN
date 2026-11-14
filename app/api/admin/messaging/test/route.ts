@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/providers/email'
 import { sendVerificationSms } from '@/lib/providers/sms'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { renderTemplate, validateTemplate } from '@/lib/notifications'
+import { getSiteSettings } from '@/lib/server/site-content'
 
 const schema = z.object({ channel: z.enum(['email', 'sms']), event_key: z.string().optional(), target: z.string().optional(), email: z.string().email().optional(), phone: z.string().optional() }).strict()
 function maskedRecipient(value: string, channel: 'email' | 'sms') {
@@ -23,15 +24,16 @@ export async function POST(request: Request) {
   if (!target || (channel === 'email' && !z.string().email().safeParse(target).success) || (channel === 'sms' && !/^\+\d{8,15}$/.test(target))) return NextResponse.json({ error: `Provide a valid ${channel === 'email' ? 'email address' : 'E.164 phone number'}` }, { status: 400 })
   const eventKey = parsed.data.event_key ?? (channel === 'sms' ? 'phone_verification_test' : 'messaging_test')
   try {
+    const { siteName } = await getSiteSettings()
     if (channel === 'email') {
-      let subject = 'FreeBetNGN email delivery test'
-      let html = '<p>Your email provider test succeeded.</p>'
+      let subject = `${siteName} email delivery test`
+      let html = `<p>Your ${siteName} email provider test succeeded.</p>`
       if (parsed.data.event_key) {
         const { data: template } = await auth.supabase.from('message_templates').select('enabled,subject,body').eq('event_key', parsed.data.event_key).eq('channel', 'email').maybeSingle()
         if (!template || !template.enabled) return NextResponse.json({ error: 'Email template is missing or disabled' }, { status: 400 })
         const unknown = [...validateTemplate(template.subject ?? ''), ...validateTemplate(template.body)]
         if (unknown.length) return NextResponse.json({ error: `Unsupported template variable: ${unknown[0]}` }, { status: 400 })
-        const values = { nickname: 'Admin', amount: '1,000', reference: 'TEST-001', reason: 'Provider test', rank: '1', date: new Date().toLocaleDateString('en-NG'), link: process.env.NEXT_PUBLIC_SITE_URL ?? '' }
+        const values = { siteName, nickname: 'Admin', amount: '1,000', reference: 'TEST-001', reason: 'Provider test', rank: '1', date: new Date().toLocaleDateString('en-NG'), link: process.env.NEXT_PUBLIC_SITE_URL ?? '' }
         subject = renderTemplate(template.subject ?? '', values)
         html = renderTemplate(template.body, values)
       }

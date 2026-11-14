@@ -2,6 +2,8 @@ import 'server-only'
 import nodemailer from 'nodemailer'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getIntegration } from '@/lib/server/integrations'
+import { getSiteSettings } from '@/lib/server/site-content'
+import { DEFAULTS } from '@/lib/site-settings'
 
 export type EmailSettings = {
   host: string
@@ -45,6 +47,7 @@ export async function sendEmail(input: { to: string; subject: string; html: stri
     secure: settings.secure ?? Number(settings.port) === 465,
     auth: { user: settings.username, pass: password },
   })
-  const from = settings.fromName ? { name: settings.fromName, address: settings.fromAddress } : settings.fromAddress
+  const { siteName } = await getSiteSettings()
+  const from = { name: settings.fromName && settings.fromName !== DEFAULTS.siteName ? settings.fromName : siteName, address: settings.fromAddress }
   await transport.sendMail({ from, to: input.to, replyTo: settings.replyTo || undefined, subject: input.subject, html: input.html, text: input.text })
 }

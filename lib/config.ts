@@ -10,5 +10,4 @@ export const TIEBREAKERS = [
 ] as const
 
 export const TIME_ZONE = 'Africa/Lagos'
-export const APP_NAME = 'FreeBetNGN'
 export const NAV_ITEMS = ['Home', 'Fixtures', 'Leaderboard', 'Rewards', 'Profile'] as const
