@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAdminApi, writeAudit } from '@/lib/admin-api'
 import { readAdSettings, AD_PAGES, AD_SIZES } from '@/lib/server/ads'
-import type { AdPage } from '@/lib/ad-settings'
+import { isValidPublicFormPlacement, PUBLIC_FORM_AD_LIMITS, type AdPage } from '@/lib/ad-settings'
 
 const slotSchema = z.object({ position: z.enum(['top', 'inline', 'bottom', 'sidebar']), network: z.enum(['A-ADS', 'Adsterra']), size: z.enum(AD_SIZES as [typeof AD_SIZES[number], ...typeof AD_SIZES]) }).superRefine((slot, context) => {
   if (slot.size === 'native' && slot.network !== 'Adsterra') context.addIssue({ code: 'custom', message: 'Native slots require Adsterra', path: ['network'] })
 })
-const pageSchema = z.object({ page: z.enum(AD_PAGES as [AdPage, ...AdPage[]]), enabled: z.boolean(), slots: z.array(slotSchema).max(5) })
+const pageSchema = z.object({ page: z.enum(AD_PAGES as [AdPage, ...AdPage[]]), enabled: z.boolean(), slots: z.array(slotSchema).max(5) }).superRefine(({ page, slots }, context) => {
+  if (isValidPublicFormPlacement(page, slots)) return
+  context.addIssue({ code: 'custom', message: `${page} allows at most ${PUBLIC_FORM_AD_LIMITS.maxSlots} slot in the '${PUBLIC_FORM_AD_LIMITS.position}' position`, path: ['slots'] })
+})
 const inputSchema = z.object({ placements: z.array(pageSchema).length(AD_PAGES.length) }).superRefine(({ placements }, context) => {
   const pages = placements.map(({ page }) => page)
   if (new Set(pages).size !== AD_PAGES.length || AD_PAGES.some((page) => !pages.includes(page as AdPage))) context.addIssue({ code: 'custom', message: 'Provide one placement entry for each supported page', path: ['placements'] })

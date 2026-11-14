@@ -4,7 +4,7 @@ import { requireAdminApi, writeAudit } from '@/lib/admin-api'
 import { readAdSettings } from '@/lib/server/ads'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { saveIntegration } from '@/lib/server/integrations'
-import type { AdPage } from '@/lib/ad-settings'
+import { PUBLIC_FORM_AD_LIMITS, type AdPage } from '@/lib/ad-settings'
 import { AD_PAGES, safeCreative, safeScriptUrl } from '@/lib/server/ads'
 import { isHttpsUrl } from '@/lib/server/ads'
 import { isAadsUnitId, parseAdSnippet, parseAdcashInput } from '@/lib/server/ad-snippets'
@@ -28,6 +28,9 @@ const schema = z.object({
   popunder: z.object({ enabled: z.boolean(), frequencyMinutes: z.number().int().min(1).max(1440), pages: z.array(z.enum(AD_PAGES as [AdPage, ...AdPage[]])).max(AD_PAGES.length) }),
   postbackSecret: z.string().max(500).optional(),
 }).superRefine((value, context) => {
+  for (const [field, pages] of [['networks.adcash.allowedPages', value.networks.adcash.allowedPages], ['popunder.pages', value.popunder.pages]] as const) {
+    if (PUBLIC_FORM_AD_LIMITS.pages.some((page) => pages.includes(page))) context.addIssue({ code: 'custom', path: field.split('.'), message: 'Login and Signup cannot enable global ad scripts.' })
+  }
   const { enabled, input } = value.networks.adcash
   if (!input) {
     if (enabled) context.addIssue({ code: 'custom', path: ['networks', 'adcash', 'input'], message: 'Paste an Adcash zone ID or the official two-script snippet before enabling Adcash.' })
