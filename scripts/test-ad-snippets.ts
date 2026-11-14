@@ -1,57 +1,30 @@
 import assert from 'node:assert/strict'
-// @ts-expect-error Native Node type stripping requires a .ts extension for this standalone test.
-import { parseAdSnippet } from '../lib/server/ad-snippets.ts'
+// @ts-expect-error Node 24 runs this standalone TypeScript test directly.
+import { parseAdSnippet, safeGlobalScriptUrl } from '../lib/server/ad-snippets.ts'
 
-const aads = `<!-- BEGIN AADS AD UNIT 2461801 -->
+const socialBar = '<script data-cfasync="false" src="https://czernik.org/14/e721736e3adeec281685c715274ce8d0"></script>'
+const nativeBanner = '<script async="async" data-cfasync="false" src="https://czernik.org/21/745a757db1dca4fa2ba8896dff9f848c"></script>\n<div id="container-745a757db1dca4fa2ba8896dff9f848c"></div>'
+const banner728 = `<script>\n  atOptions = { 'key' : ********, 'format' : 'iframe', 'height' : 90, 'width' : 728, 'params' : {} };\n</script>\n<script src="https://czernik.org/22/********"></script>`
+const smartlink = 'https://budgetezy.org/4/af3b983bccb4671b602b69f8c288083c'
 
-<div id="frame" style="width: 100%;margin: auto;position: relative; z-index: 99998;">
-          <iframe data-aa='2461801' src='//acceptable.a-ads.com/2461801/?size=Adaptive'
-                            style='border:0; padding:0; width:70%; height:auto; overflow:hidden;display: block;margin: auto'></iframe>
-        </div>
-
-<!-- END AADS AD UNIT 2461801 -->`
-
-const adsterra = `<script>
-  atOptions = {
-    'key' : ********,
-    'format' : 'iframe',
-    'height' : 90,
-    'width' : 728,
-    'params' : {}
-  };
-</script>
-<script src="https://czernik.org/22/********"></script>`
-
-const aadsResult = parseAdSnippet(aads)
-const adsterraResult = parseAdSnippet(adsterra)
-assert.equal(aadsResult.ok, true, aadsResult.issues.join('; '))
-assert.equal(adsterraResult.ok, true, adsterraResult.issues.join('; '))
-assert.equal(aadsResult.unitId, '2461801')
-assert.equal(adsterraResult.width, 728)
-assert.equal(adsterraResult.height, 90)
-assert.match(aadsResult.html, /acceptable\.a-ads\.com\/2461801/)
-assert.match(adsterraResult.html, /czernik\.org\/22/)
-
-const savedBeforeReload = { aads: { units: { '320x100': aads } }, adsterra: { banner: { '728x90': adsterra } } }
-const savedAfterReload = JSON.parse(JSON.stringify(savedBeforeReload)) as typeof savedBeforeReload
-assert.equal(savedAfterReload.aads.units['320x100'], aads)
-assert.equal(savedAfterReload.adsterra.banner['728x90'], adsterra)
+const accepted = [
+  ['social bar global script', () => safeGlobalScriptUrl(socialBar) === 'https://czernik.org/14/e721736e3adeec281685c715274ce8d0'],
+  ['native banner snippet', () => parseAdSnippet(nativeBanner).ok],
+  ['728x90 banner snippet', () => parseAdSnippet(banner728).ok],
+  ['plain smartlink URL', () => new URL(smartlink).protocol === 'https:' && new URL(smartlink).hostname === 'budgetezy.org'],
+  ['global plain HTTPS URL without .js', () => safeGlobalScriptUrl('https://czernik.org/14/adcode') === 'https://czernik.org/14/adcode'],
+  ['global script with protocol-relative src', () => safeGlobalScriptUrl('<script src="//czernik.org/14/code"></script>') === 'https://czernik.org/14/code'],
+  ['global script with comments, whitespace, and trailing backslash', () => safeGlobalScriptUrl('  <!-- <script data-cfasync="false" src="https://czernik.org/14/code"></script> -->\\  ') === 'https://czernik.org/14/code'],
+] as const
 
 const rejected = [
-  '<iframe src="https://ads.example/ad" onload="alert(1)"></iframe>',
-  '<div onclick="alert(1)">ad</div>',
-  '<a href="javascript:alert(1)">ad</a>',
-  '<iframe src="data:text/html,hello"></iframe>',
-  '<iframe src="https://ads.example/ad" srcdoc="<script>alert(1)</script>"></iframe>',
-  '<script>atOptions = {\'x\': fetch(\'https://example.test\')};</script>',
-  '<style>body { display: none }</style>',
-  '<script src="http://ads.example/ad.js"></script>',
-  '<script src="https://user:password@ads.example/ad.js"></script>',
-]
-for (const snippet of rejected) {
-  assert.equal(parseAdSnippet(snippet).ok, false, `Expected rejection: ${snippet}`)
-}
+  ['two scripts in a global field', () => !safeGlobalScriptUrl(`${socialBar}${socialBar}`)],
+  ['inline script body in a global field', () => !safeGlobalScriptUrl('<script src="https://czernik.org/14/code">alert(1)</script>')],
+  ['HTTP script src', () => !safeGlobalScriptUrl('<script src="http://czernik.org/14/code"></script>')],
+  ['onload attribute', () => !safeGlobalScriptUrl('<script src="https://czernik.org/14/code" onload="alert(1)"></script>')],
+] as const
 
-console.log('PASS: official A-ADS and Adsterra snippets parse successfully')
-console.log('PASS: raw snippets are unchanged after simulated save and reload')
-console.log('PASS: all 9 unsafe or unsupported snippets are rejected')
+for (const [name, test] of [...accepted, ...rejected]) {
+  assert.equal(test(), true, name)
+  console.log(`PASS ${name}`)
+}

@@ -9,6 +9,7 @@ const dimensions: Record<AdSize, { width: number; height: number }> = {
   '320x100': { width: 320, height: 100 },
   '300x250': { width: 300, height: 250 },
   '728x90': { width: 728, height: 90 },
+  native: { width: 0, height: 0 },
 }
 const schema = z.object({ network: z.enum(['A-ADS', 'Adsterra']), size: z.enum(AD_SIZES as [AdSize, ...AdSize[]]), snippet: z.string().max(8192) })
 

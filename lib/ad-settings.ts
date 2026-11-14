@@ -1,5 +1,5 @@
 export type AdNetwork = 'A-ADS' | 'Adsterra'
-export type AdSize = '320x100' | '300x250' | '728x90'
+export type AdSize = '320x100' | '300x250' | '728x90' | 'native'
 export type AdPage = 'Home' | 'Fixtures' | 'Predictions' | 'Leaderboard' | 'Rewards' | 'Earn' | 'Referrals' | 'Profile' | 'Spin'
 export type AdPosition = 'top' | 'inline' | 'bottom' | 'sidebar'
 export type AdPlacementSlot = { position: AdPosition; network: AdNetwork; size: AdSize }
@@ -26,7 +26,7 @@ export type AdSettings = {
   popunder: { enabled: boolean; frequencyMinutes: number; pages: AdPage[] }
 }
 
-const blockedPath = (pathname: string) => /\/(?:login|signup|join|verify|forgot-password|console-internal|admin)(?:\/|$)/i.test(pathname)
+const blockedPath = (pathname: string) => /\/(?:login|signup|join|verify|forgot-password|reset-password|console-internal|admin)(?:\/|$)/i.test(pathname)
 
 export const adPageFromPath = (pathname: string): AdPage | null => {
   if (blockedPath(pathname)) return null

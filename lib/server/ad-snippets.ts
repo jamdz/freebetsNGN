@@ -83,6 +83,20 @@ function inlineOptions(body: string) {
   }
 }
 
+export function safeGlobalScriptUrl(value: string) {
+  let candidate = value.trim().replace(/\\\s*$/, '').trim()
+  candidate = candidate.replace(/^(?:\s*<!--\s*)+|(?:\s*-->\s*)+$/g, '').trim()
+  if (/^<script\b/i.test(candidate)) {
+    const parsed = parseAdSnippet(candidate)
+    if (!parsed.ok || !/^<script\b[^>]*\bsrc="https:\/\/[^\"]+"[^>]*>\s*<\/script>$/.test(parsed.html)) return ''
+    return parsed.html.match(/\bsrc="([^\"]+)"/)?.[1] ?? ''
+  }
+  try {
+    const url = new URL(candidate.startsWith('//') ? `https:${candidate}` : candidate)
+    return url.protocol === 'https:' && !url.username && !url.password && url.hostname ? url.toString() : ''
+  } catch { return '' }
+}
+
 export function parseAdSnippet(raw: string): AdSnippetResult {
   const issues: string[] = []
   if (raw.length > 8192) return { ok: false, issues: ['Snippet must be 8192 characters or fewer.'], html: '' }

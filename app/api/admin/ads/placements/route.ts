@@ -4,7 +4,9 @@ import { requireAdminApi, writeAudit } from '@/lib/admin-api'
 import { readAdSettings, AD_PAGES, AD_SIZES } from '@/lib/server/ads'
 import type { AdPage } from '@/lib/ad-settings'
 
-const slotSchema = z.object({ position: z.enum(['top', 'inline', 'bottom', 'sidebar']), network: z.enum(['A-ADS', 'Adsterra']), size: z.enum(AD_SIZES as [typeof AD_SIZES[number], ...typeof AD_SIZES]) })
+const slotSchema = z.object({ position: z.enum(['top', 'inline', 'bottom', 'sidebar']), network: z.enum(['A-ADS', 'Adsterra']), size: z.enum(AD_SIZES as [typeof AD_SIZES[number], ...typeof AD_SIZES]) }).superRefine((slot, context) => {
+  if (slot.size === 'native' && slot.network !== 'Adsterra') context.addIssue({ code: 'custom', message: 'Native slots require Adsterra', path: ['network'] })
+})
 const pageSchema = z.object({ page: z.enum(AD_PAGES as [AdPage, ...AdPage[]]), enabled: z.boolean(), slots: z.array(slotSchema).max(5) })
 const inputSchema = z.object({ placements: z.array(pageSchema).length(AD_PAGES.length) }).superRefine(({ placements }, context) => {
   const pages = placements.map(({ page }) => page)

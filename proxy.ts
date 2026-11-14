@@ -4,7 +4,7 @@ import { enforceRateLimit, type RateLimitPolicy } from '@/lib/server/rate-limit'
 import { updateSession } from '@/lib/supabase/proxy'
 
 const publicRoutes = ['/', '/login', '/signup', '/verify', '/auth/callback', '/forgot-password', '/reset-password', '/ad-verification', '/terms', '/privacy', '/prize-rules', '/responsible-play']
-const publicApiRoutes = ['/api/admin/login', '/api/admin/logout', '/api/admin/session', '/api/auth/status', '/api/auth/resolve-identifier', '/api/ads/config', '/api/offers/config']
+const publicApiRoutes = ['/api/csp-report', '/api/admin/login', '/api/admin/logout', '/api/admin/session', '/api/auth/status', '/api/auth/resolve-identifier', '/api/ads/config', '/api/offers/config']
 
 function rateLimitPolicy(pathname: string, method: string): RateLimitPolicy | null {
   if (pathname === '/api/admin/login') return { scope: 'admin-login', limit: 5, windowSeconds: 900 }
