@@ -1,2 +1,3 @@
 import { RewardsWorkspace } from '@/components/freebet/rewards-workspace'
-export default function RewardsPage() { return <RewardsWorkspace /> }
+import { getPublicRules } from '@/lib/server/public-rules'
+export default async function RewardsPage() { const rules = await getPublicRules(); return <RewardsWorkspace qualificationRules={rules.qualificationRules} /> }

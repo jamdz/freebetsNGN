@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { ADMIN_COOKIE, getAdminEmail, isAdminConfigured, verifyAdminSession, verifyReauthPassword } from '@/lib/admin-auth'
 import { securityDb } from '@/lib/admin-security'
+import { buildPagination, parsePagination } from '@/lib/admin-pagination'
 
 async function authorized(password: unknown) {
   const cookie = (await cookies()).get(ADMIN_COOKIE)?.value
@@ -15,9 +16,11 @@ async function authorized(password: unknown) {
 export async function GET(request: Request) {
   const identity = await authorized(request.headers.get('x-admin-password'))
   if (!identity) return NextResponse.json({ error: 'Re-authentication required' }, { status: 403 })
-  const { data, error } = await securityDb().from('admin_users').select('id,email,is_active,created_at,totp_secret_ciphertext').order('created_at', { ascending: true })
+  const { page, pageSize, from, to } = parsePagination(new URL(request.url).searchParams, { defaultSize: 10, allowed: [10, 25, 50] })
+  const { data, count, error } = await securityDb().from('admin_users').select('id,email,is_active,created_at,totp_secret_ciphertext', { count: 'exact' }).order('created_at', { ascending: true }).range(from, to)
   if (error) return NextResponse.json({ error: 'Unable to load administrators' }, { status: 500 })
-  return NextResponse.json({ admins: (data ?? []).map(({ totp_secret_ciphertext: totp, ...admin }) => ({ ...admin, totp_enabled: Boolean(totp) })) })
+  const items = (data ?? []).map(({ totp_secret_ciphertext: totp, ...admin }) => ({ ...admin, totp_enabled: Boolean(totp) }))
+  return NextResponse.json({ items, pagination: buildPagination(page, pageSize, count ?? 0) })
 }
 
 const createSchema = z.object({ email: z.string().email().max(254), password: z.string().min(12).max(128), admin_password: z.string().min(1) })
