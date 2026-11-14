@@ -2,10 +2,11 @@ import 'server-only'
 import { after } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/providers/email'
+import { getSiteSettings } from '@/lib/server/site-content'
 
 export const NOTIFICATION_EVENTS = ['withdrawal_airtime_sent', 'withdrawal_airtime_rejected', 'withdrawal_bank_paid', 'withdrawal_bank_rejected', 'account_suspended', 'account_banned', 'account_reactivated', 'spin_win', 'prize_won', 'referral_credit'] as const
 export type NotificationEvent = typeof NOTIFICATION_EVENTS[number]
-export const TEMPLATE_VARIABLES = ['nickname', 'amount', 'reference', 'reason', 'rank', 'date', 'link'] as const
+export const TEMPLATE_VARIABLES = ['nickname', 'amount', 'reference', 'reason', 'rank', 'date', 'link', 'siteName'] as const
 const variablePattern = /\{([a-zA-Z][a-zA-Z0-9_]*)\}/g
 
 export function validateTemplate(text: string) {
@@ -86,7 +87,9 @@ export async function processNotificationOutbox(limit = 25) {
       if (profileError) throw profileError
       if (!profile?.email) throw new Error('Recipient email not found in profiles')
       const payload = row.payload && typeof row.payload === 'object' ? row.payload as Record<string, unknown> : {}
+      const siteSettings = await getSiteSettings()
       const values: Record<string, unknown> = {
+        siteName: siteSettings.siteName,
         nickname: profile.nickname,
         amount: payload.amount ?? payload.amount_naira,
         reference: payload.reference,

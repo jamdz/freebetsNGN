@@ -1,6 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
+import { useSiteBrand } from '@/components/site-brand'
 import { useEffect, useState } from 'react'
 
 const consentEvent = 'freebet:ads-consent'
@@ -23,8 +24,9 @@ export function useAdConsent() {
 
 export function AdConsentBanner() {
   const { consent, accept, decline } = useAdConsent()
+  const { siteName } = useSiteBrand()
   if (consent !== null) return null
-  return <aside className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-2xl flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-2xl md:bottom-4 md:flex-row md:items-center md:justify-between" role="dialog" aria-label="Advertising consent"><p className="text-sm text-muted-foreground">We use optional advertising cookies to support FreeBetNGN. Ads are never connected to points or credits.</p><div className="flex shrink-0 gap-2"><button type="button" className="rounded-lg px-3 py-2 text-sm text-muted-foreground" onClick={decline}>Decline</button><button type="button" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground" onClick={accept}>Accept</button></div></aside>
+  return <aside className="fixed inset-x-4 bottom-20 z-50 mx-auto flex max-w-2xl flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-2xl md:bottom-4 md:flex-row md:items-center md:justify-between" role="dialog" aria-label="Advertising consent"><p className="text-sm text-muted-foreground">We use optional advertising cookies to support {siteName}. Ads are never connected to points or credits.</p><div className="flex shrink-0 gap-2"><button type="button" className="rounded-lg px-3 py-2 text-sm text-muted-foreground" onClick={decline}>Decline</button><button type="button" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground" onClick={accept}>Accept</button></div></aside>
 }
 
 type SmartlinkResponse = { smartlink?: { href: string } | null }

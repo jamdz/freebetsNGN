@@ -22,11 +22,11 @@ const eventOptions = [
 ] as const
 const fetcher = async (url: string) => { const response = await fetch(url, { cache: 'no-store' }); const body = await response.json(); if (!response.ok) throw new Error(body.error ?? 'Request failed'); return body }
 const defaults = {
-  email: { host: '', port: 587, username: '', fromName: 'FreeBetNGN', fromAddress: '', replyTo: '', dailySendCap: 1000, perMinuteLimit: 30, secure: false },
+  email: { host: '', port: 587, username: '', fromName: '', fromAddress: '', replyTo: '', dailySendCap: 1000, perMinuteLimit: 30, secure: false },
   sms: { baseUrl: '', senderId: '', channel: 'generic', codeLength: 6, expiryMinutes: 10, resendCooldownSeconds: 30, maxAttempts: 5, maxSendsPerNumberPerDay: 5, lowBalanceThreshold: 0 },
 }
 function renderPreview(text: string) {
-  const sample: Record<string, string> = { nickname: 'Amina', amount: '₦1,000', reference: 'FB-2048', reason: 'Request approved', rank: '2', date: '12 Nov 2026', link: process.env.NEXT_PUBLIC_SITE_URL ?? '' }
+  const sample: Record<string, string> = { siteName: 'Site name', nickname: 'Amina', amount: '₦1,000', reference: 'FB-2048', reason: 'Request approved', rank: '2', date: '12 Nov 2026', link: process.env.NEXT_PUBLIC_SITE_URL ?? '' }
   return text.replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (match, key: string) => sample[key] ?? match)
 }
 function Field({ label, value, onChange, type = 'text', placeholder, min, max, disabled = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; placeholder?: string; min?: number; max?: number; disabled?: boolean }) {
@@ -141,7 +141,7 @@ function TemplateEditor({ audit }: { audit: Audit }) {
   }
   if (error) return <Card><CardContent className="pt-6 text-sm text-destructive">{error.message}</CardContent></Card>
   return <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
-    <Card><CardHeader><CardTitle>Email templates</CardTitle><CardDescription>Supported variables: {'{nickname}'}, {'{amount}'}, {'{reference}'}, {'{reason}'}, {'{rank}'}, {'{date}'}, {'{link}'}.</CardDescription></CardHeader><CardContent className="flex flex-col gap-4">
+    <Card><CardHeader><CardTitle>Email templates</CardTitle><CardDescription>Supported variables: {'{nickname}'}, {'{amount}'}, {'{reference}'}, {'{reason}'}, {'{rank}'}, {'{date}'}, {'{link}'}, {'{siteName}'}. </CardDescription></CardHeader><CardContent className="flex flex-col gap-4">
       <label className="flex flex-col gap-1.5 text-sm font-medium"><span>Event</span><select value={eventKey} onChange={(event) => setEventKey(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3">{eventOptions.map(([key, title]) => <option key={key} value={key}>{title}</option>)}</select></label>
       <label className="flex items-center gap-3 text-sm font-medium"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />Enable template</label>
       <Field label="Subject" value={draft.subject} onChange={(value) => setDraft({ ...draft, subject: value })} />
