@@ -7,6 +7,7 @@ export type AdSettings = {
   previewMode: boolean
   networks: {
     aads: { active: boolean; units: Record<AdSize, string>; unitActive: Record<AdSize, boolean> }
+    adcash: { enabled: boolean; input: string; format: 'autotag' | 'pop' | null; zoneId: string; allowedPages: AdPage[] }
     adsterra: {
       active: boolean
       banner: Record<AdSize, string>

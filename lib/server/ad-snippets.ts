@@ -28,6 +28,42 @@ const size = (value: string | undefined) => {
 
 export const isAadsUnitId = (value: string) => /^\d{3,12}$/.test(value)
 
+export type AdcashFormat = 'autotag' | 'pop'
+export type AdcashInputResult = { ok: true; format: AdcashFormat; zoneId: string } | { ok: false; issue: string }
+const adcashZoneIdPattern = /^[A-Za-z0-9]{4,20}$/
+const adcashInlinePattern = /^\s*aclib\.(runAutoTag|runPop)\(\s*\{\s*zoneId\s*:\s*['\"]([A-Za-z0-9]{4,20})['\"]\s*,?\s*\}\s*\)\s*;?\s*$/
+
+export function parseAdcashInput(raw: string): AdcashInputResult {
+  const trimmed = raw.trim()
+  if (adcashZoneIdPattern.test(trimmed)) return { ok: true, format: 'autotag', zoneId: trimmed }
+
+  const source = trimmed.replace(/(<\/script>)\\\s*$/i, '$1')
+  const fragment = parseFragment(source)
+  const scripts: ElementNode[] = []
+  for (const node of fragment.childNodes) {
+    if ('tagName' in node && node.tagName.toLowerCase() === 'script') scripts.push(node as ElementNode)
+    else if ('value' in node && !node.value.trim()) continue
+    else return { ok: false, issue: 'Paste only the official Adcash library and zone script blocks, or a zone ID.' }
+  }
+  if (scripts.length !== 2) return { ok: false, issue: 'Paste the official Adcash library and zone script blocks, or a zone ID.' }
+
+  const library = scripts[0]
+  const libraryAttrs = Object.fromEntries(library.attrs.map(({ name, value }) => [name.toLowerCase(), value]))
+  if (library.attrs.length !== 3 || Object.keys(libraryAttrs).some((name) => !['id', 'type', 'src'].includes(name)) || libraryAttrs.id !== 'aclib' || libraryAttrs.type !== 'text/javascript' || !['//acscdn.com/script/aclib.js', 'https://acscdn.com/script/aclib.js'].includes(libraryAttrs.src ?? '')) {
+    return { ok: false, issue: 'The first script must be the official Adcash library with only id="aclib", type="text/javascript", and the approved acscdn.com src.' }
+  }
+
+  const inline = scripts[1]
+  if (inline.attrs.length !== 1 || inline.attrs[0].name.toLowerCase() !== 'type' || inline.attrs[0].value !== 'text/javascript') {
+    return { ok: false, issue: 'The second script must be a text/javascript Adcash zone call with no extra attributes.' }
+  }
+  const body = inline.childNodes.map((child) => 'value' in child ? child.value : '').join('')
+  const match = body.match(adcashInlinePattern)
+  if (!match) return { ok: false, issue: 'The inline script must contain only an Adcash runAutoTag or runPop call with a 4–20 character zone ID.' }
+
+  return { ok: true, format: match[1] === 'runAutoTag' ? 'autotag' : 'pop', zoneId: match[2] }
+}
+
 export function aadsUnitSnippet(unitId: string, dimensions: { width: number; height: number }) {
   return `<iframe data-aa="${unitId}" src="//acceptable.a-ads.com/${unitId}/?size=Adaptive" width="${dimensions.width}" height="${dimensions.height}" style="border:0; padding:0; width:100%; height:auto; overflow:hidden; display:block; margin:auto"></iframe>`
 }

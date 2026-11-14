@@ -7,22 +7,39 @@ import { saveIntegration } from '@/lib/server/integrations'
 import type { AdPage } from '@/lib/ad-settings'
 import { AD_PAGES, safeCreative, safeScriptUrl } from '@/lib/server/ads'
 import { isHttpsUrl } from '@/lib/server/ads'
-import { isAadsUnitId, parseAdSnippet } from '@/lib/server/ad-snippets'
+import { isAadsUnitId, parseAdSnippet, parseAdcashInput } from '@/lib/server/ad-snippets'
 
 const sizeRecord = <T extends z.ZodTypeAny>(value: T) => z.object({ '320x100': value, '300x250': value, '728x90': value, native: value })
 const creative = z.string().max(8192).refine((value) => !value || Boolean(safeCreative(value)), 'Use a single HTTPS script/iframe tag or an HTTPS URL')
 const bannerSnippet = z.string().max(8192).refine((value) => !value || parseAdSnippet(value).ok, 'Paste a supported ad snippet')
 const aadsUnit = z.string().max(8192).refine((value) => !value || isAadsUnitId(value) || parseAdSnippet(value).ok, 'Use a 3–12 digit A-ADS unit ID or a supported ad snippet')
 const scriptUrl = z.string().max(8192).refine((value) => !value || Boolean(safeScriptUrl(value)), 'Use an HTTPS script URL or a supported full script tag')
+const adcashFormat = z.enum(['autotag', 'pop'])
+const adcashZoneId = z.string().regex(/^[A-Za-z0-9]{4,20}$/, 'Adcash zone ID must be 4–20 letters or digits.')
+const adcashPersistedConfig = z.object({ format: adcashFormat, zoneId: adcashZoneId })
 const schema = z.object({
   previewMode: z.boolean(),
   networks: z.object({
     aads: z.object({ active: z.boolean(), units: sizeRecord(aadsUnit), unitActive: sizeRecord(z.boolean()) }),
+    adcash: z.object({ enabled: z.boolean(), input: z.string().max(8192), allowedPages: z.array(z.enum(AD_PAGES as [AdPage, ...AdPage[]])).max(AD_PAGES.length) }),
     adsterra: z.object({ active: z.boolean(), banner: sizeRecord(bannerSnippet), bannerActive: sizeRecord(z.boolean()), native: bannerSnippet, nativeActive: z.boolean(), socialBar: scriptUrl, socialBarActive: z.boolean(), popunder: scriptUrl, popunderActive: z.boolean(), smartlink: z.string().max(2048).refine((value) => !value || (Boolean(safeCreative(value)?.kind === 'url')), 'Use an HTTPS smartlink URL'), smartlinkActive: z.boolean() }),
   }),
   offerwall: z.object({ active: z.boolean(), provider: z.string().trim().min(1).max(80), appId: z.string().trim().max(200), embedUrl: z.string().trim().max(2048).refine((value) => !value || (value.includes('{userId}') && isHttpsUrl(value.replaceAll('{userId}', 'test-user'))), 'Use an HTTPS embed template containing {userId}'), rewardShare: z.number().min(0).max(100), holdDays: z.number().int().min(0).max(365), fxRate: z.number().positive().max(1_000_000) }),
   popunder: z.object({ enabled: z.boolean(), frequencyMinutes: z.number().int().min(1).max(1440), pages: z.array(z.enum(AD_PAGES as [AdPage, ...AdPage[]])).max(AD_PAGES.length) }),
   postbackSecret: z.string().max(500).optional(),
+}).superRefine((value, context) => {
+  const { enabled, input } = value.networks.adcash
+  if (!input) {
+    if (enabled) context.addIssue({ code: 'custom', path: ['networks', 'adcash', 'input'], message: 'Paste an Adcash zone ID or the official two-script snippet before enabling Adcash.' })
+    return
+  }
+  const parsed = parseAdcashInput(input)
+  if (!parsed.ok) {
+    context.addIssue({ code: 'custom', path: ['networks', 'adcash', 'input'], message: parsed.issue })
+    return
+  }
+  const validated = adcashPersistedConfig.safeParse({ format: parsed.format, zoneId: parsed.zoneId })
+  if (!validated.success) context.addIssue({ code: 'custom', path: ['networks', 'adcash', 'input'], message: 'Adcash format or zone ID is invalid.' })
 })
 
 export async function GET() {
@@ -52,10 +69,22 @@ export async function PUT(request: Request) {
   try {
     const aadsConfig = { units: input.networks.aads.units, unitActive: input.networks.aads.unitActive }
     const adsterraConfig = { ...input.networks.adsterra, socialBar: safeScriptUrl(input.networks.adsterra.socialBar), popunder: safeScriptUrl(input.networks.adsterra.popunder), previewMode: input.previewMode, popunderSettings: input.popunder }
-    const { error: networkError } = await db.from('ad_networks').upsert([
-      { id: 'aads', enabled: input.networks.aads.active, config: aadsConfig, updated_at: new Date().toISOString() },
-      { id: 'adsterra', enabled: input.networks.adsterra.active, config: adsterraConfig, updated_at: new Date().toISOString() },
-    ], { onConflict: 'id' })
+    const updatedAt = new Date().toISOString()
+    const networkRows: Array<{ id: string; enabled: boolean; config: Record<string, unknown>; updated_at: string }> = [
+      { id: 'aads', enabled: input.networks.aads.active, config: aadsConfig, updated_at: updatedAt },
+      { id: 'adsterra', enabled: input.networks.adsterra.active, config: adsterraConfig, updated_at: updatedAt },
+    ]
+    const parsedAdcash = input.networks.adcash.input ? parseAdcashInput(input.networks.adcash.input) : null
+    if (parsedAdcash?.ok) {
+      const validatedConfig = adcashPersistedConfig.parse({ format: parsedAdcash.format, zoneId: parsedAdcash.zoneId })
+      networkRows.push({
+        id: 'adcash',
+        enabled: input.networks.adcash.enabled,
+        config: { ...validatedConfig, allowedPages: input.networks.adcash.allowedPages },
+        updated_at: updatedAt,
+      })
+    }
+    const { error: networkError } = await db.from('ad_networks').upsert(networkRows, { onConflict: 'id' })
     if (networkError) throw networkError
     const { data: existingIntegration, error: integrationError } = await db.from('integration_settings').select('key,public_config').eq('key', 'offerwall_adgem').maybeSingle()
     if (integrationError) throw integrationError
