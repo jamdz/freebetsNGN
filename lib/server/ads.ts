@@ -14,6 +14,7 @@ export function emptyAdSettings(): AdSettings {
     previewMode: false,
     networks: {
       aads: { active: false, units: emptySizeValues(), unitActive: emptySizeSwitches() },
+      adcash: { enabled: false, input: '', format: null, zoneId: '', allowedPages: [] },
       adsterra: { active: false, banner: emptySizeValues(), bannerActive: emptySizeSwitches(), native: '', nativeActive: false, socialBar: '', socialBarActive: false, popunder: '', popunderActive: false, smartlink: '', smartlinkActive: false },
     },
     offerwall: { active: false, provider: 'AdGem', appId: '', embedUrl: '', rewardShare: 70, holdDays: 7, fxRate: 1 },
@@ -46,6 +47,20 @@ export async function readAdSettings() {
   for (const row of networksResult.data ?? []) {
     const config = record(row.config)
     if (row.id === 'aads') settings.networks.aads = { ...settings.networks.aads, ...config, active: Boolean(row.enabled), units: { ...settings.networks.aads.units, ...record(config.units) }, unitActive: { ...settings.networks.aads.unitActive, ...record(config.unitActive) } }
+    if (row.id === 'adcash') {
+      const zoneId = typeof config.zoneId === 'string' && /^[A-Za-z0-9]{4,20}$/.test(config.zoneId) ? config.zoneId : ''
+      const format = config.format === 'autotag' || config.format === 'pop' ? config.format : null
+      const input = zoneId && format
+        ? `<script id="aclib" type="text/javascript" src="//acscdn.com/script/aclib.js"></script>\n<script type="text/javascript">\n    aclib.${format === 'pop' ? 'runPop' : 'runAutoTag'}({\n        zoneId: '${zoneId}',\n    });\n</script>`
+        : ''
+      settings.networks.adcash = {
+        enabled: Boolean(row.enabled),
+        input,
+        format,
+        zoneId,
+        allowedPages: Array.isArray(config.allowedPages) ? config.allowedPages.filter((page: unknown): page is AdPage => AD_PAGES.includes(page as AdPage)) : [],
+      }
+    }
     if (row.id === 'adsterra') {
       settings.networks.adsterra = { ...settings.networks.adsterra, ...config, active: Boolean(row.enabled), banner: { ...settings.networks.adsterra.banner, ...record(config.banner) }, bannerActive: { ...settings.networks.adsterra.bannerActive, ...record(config.bannerActive) } }
       settings.previewMode = Boolean(config.previewMode)
@@ -111,11 +126,20 @@ export function publicAdConfig(settings: AdSettings, page: AdPage, consent: bool
     return [{ position: slot.position, network: slot.network, size: slot.size, index }]
   }) ?? []
   const adsterra = settings.networks.adsterra
+  const adcash = settings.networks.adcash
   const socialBar = placement?.enabled && adsterra.active && adsterra.socialBarActive ? safeScriptUrl(adsterra.socialBar) : ''
   const popunder = placement?.enabled && adsterra.active && settings.popunder.enabled && settings.popunder.pages.includes(page) && adsterra.popunderActive ? safeScriptUrl(adsterra.popunder) : ''
   return {
     page, consent: true, enabled: Boolean(placement?.enabled), previewMode: settings.previewMode, slots,
-    globalScripts: { socialBar, popunder, popunderFrequencyMinutes: settings.popunder.frequencyMinutes, popunderPages: settings.popunder.pages },
+    globalScripts: {
+      socialBar,
+      popunder,
+      popunderFrequencyMinutes: settings.popunder.frequencyMinutes,
+      popunderPages: settings.popunder.pages,
+      adcash: adcash.enabled && adcash.format && adcash.zoneId && adcash.allowedPages.includes(page)
+        ? { format: adcash.format, zoneId: adcash.zoneId }
+        : null,
+    },
     smartlink: smartlinkAllowed ? { href: safeCreative(adsterra.smartlink)!.src } : null,
   }
 }

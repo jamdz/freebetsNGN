@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAdminApi } from '@/lib/admin-api'
-import { isAadsUnitId, aadsUnitSnippet, parseAdSnippet } from '@/lib/server/ad-snippets'
+import { isAadsUnitId, aadsUnitSnippet, parseAdSnippet, parseAdcashInput } from '@/lib/server/ad-snippets'
 import { AD_SIZES } from '@/lib/server/ads'
 import type { AdSize } from '@/lib/ad-settings'
 
@@ -11,7 +11,7 @@ const dimensions: Record<AdSize, { width: number; height: number }> = {
   '728x90': { width: 728, height: 90 },
   native: { width: 0, height: 0 },
 }
-const schema = z.object({ network: z.enum(['A-ADS', 'Adsterra']), size: z.enum(AD_SIZES as [AdSize, ...AdSize[]]), snippet: z.string().max(8192) })
+const schema = z.object({ network: z.enum(['A-ADS', 'Adsterra', 'Adcash']), size: z.enum(AD_SIZES as [AdSize, ...AdSize[]]), snippet: z.string().max(8192) })
 
 export async function POST(request: Request) {
   const auth = await requireAdminApi()
@@ -21,6 +21,17 @@ export async function POST(request: Request) {
   if (!input.success) return NextResponse.json({ ok: false, issues: ['Invalid validation request.'], html: '' }, { status: 400 })
 
   const { network, size, snippet } = input.data
+  if (network === 'Adcash') {
+    const result = parseAdcashInput(snippet)
+    const { error: auditError } = await auth.supabase.from('audit_log').insert({
+      action: result.ok ? 'validate_ad_snippet_ok' : 'validate_ad_snippet_failed',
+      entity: 'Adcash',
+      entity_id: result.ok ? result.zoneId : 'zone',
+      details: { network, format: result.ok ? result.format : null, ok: result.ok },
+    })
+    if (auditError) console.error('[admin] Adcash validation audit insert failed', { ok: result.ok, message: auditError.message })
+    return NextResponse.json({ ok: result.ok, issues: result.ok ? [] : [result.issue], format: result.ok ? result.format : undefined, zoneId: result.ok ? result.zoneId : undefined }, { headers: { 'Cache-Control': 'no-store' } })
+  }
   const source = network === 'A-ADS' && isAadsUnitId(snippet) ? aadsUnitSnippet(snippet, dimensions[size]) : snippet
   const result = parseAdSnippet(source)
   const { error: auditError } = await auth.supabase.from('audit_log').insert({

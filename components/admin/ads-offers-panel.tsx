@@ -17,6 +17,7 @@ const fetcher = async (url: string) => {
 }
 const sizes: AdSize[] = ['320x100', '300x250', '728x90']
 const positions: AdPlacementSlot['position'][] = ['top', 'inline', 'bottom', 'sidebar']
+const globalScriptPages: AdPage[] = ['Home', 'Fixtures', 'Predictions', 'Leaderboard', 'Rewards', 'Earn', 'Referrals', 'Profile', 'Spin']
 
 export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: string, target: string) => void }) {
   const [tab, setTab] = useState<'networks' | 'placements' | 'offerwall' | 'reporting'>('networks')
@@ -28,7 +29,7 @@ export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: s
   const [postbackResult, setPostbackResult] = useState('')
   const { data: networks, error: networkError, mutate: mutateNetworks } = useSWR<NetworkResponse>('/api/admin/ads/networks', fetcher)
   const { data: placements, error: placementError, mutate: mutatePlacements } = useSWR<{ placements: AdSettings['placements'] }>('/api/admin/ads/placements', fetcher)
-  const { data: smartlinkDiagnostics } = useSWR<{ checks: Array<{ key: string; ok: boolean; message: string }>; visitorsMustAcceptCookieBanner: boolean }>('/api/admin/ads/diagnostics?page=Earn', fetcher)
+  const { data: smartlinkDiagnostics } = useSWR<{ checks: Array<{ key: string; ok: boolean; message: string }>; adcashChecks: Array<{ key: string; ok: boolean; message: string }>; visitorsMustAcceptCookieBanner: boolean }>('/api/admin/ads/diagnostics?page=Earn', fetcher)
   const { data: blockedHosts, mutate: mutateBlockedHosts } = useSWR<{ groups: Array<{ blockedHost: string; directive: string; count: number }>; hosts: string[] }>('/api/admin/ads/blocked-hosts', fetcher)
 
   useEffect(() => {
@@ -94,6 +95,20 @@ export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: s
       <NetworkCard title="A-ADS" active={settings.networks.aads.active} onToggle={(active) => update((draft) => { draft.networks.aads.active = active })}>
         {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} placement active`, settings.networks.aads.unitActive[size], (active) => update((draft) => { draft.networks.aads.unitActive[size] = active }))}<SnippetField network="A-ADS" size={size} value={settings.networks.aads.units[size]} onChange={(value) => update((draft) => { draft.networks.aads.units[size] = value })} /></div>)}
       </NetworkCard>
+      <NetworkCard title="Adcash" active={settings.networks.adcash.enabled} onToggle={(enabled) => update((draft) => { draft.networks.adcash.enabled = enabled })}>
+        <AdcashField value={settings.networks.adcash.input} onChange={(value) => update((draft) => { draft.networks.adcash.input = value })} />
+        <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">
+          <p className="text-xs font-semibold text-muted-foreground">Allowed pages for global scripts</p>
+          <div className="grid gap-2 sm:grid-cols-2">{globalScriptPages.map((page) => <div key={page}>{toggle(page, settings.networks.adcash.allowedPages.includes(page), (allowed) => update((draft) => {
+            const allowedPages = draft.networks.adcash.allowedPages
+            draft.networks.adcash.allowedPages = allowed ? [...new Set([...allowedPages, page])] : allowedPages.filter((item) => item !== page)
+          }))}</div>)}</div>
+        </div>
+        <p className="text-xs text-muted-foreground">Your website must be verified in the Adcash publisher panel.</p>
+        <p className="text-xs text-muted-foreground">Autotag chooses its own formats (including pop-unders), so enable it only on pages where you want that.</p>
+        <p className="text-xs text-muted-foreground">Add acscdn.com to AD_SCRIPT_HOSTS and redeploy. CSP-blocked hosts appear below grouped by host, directive, and count; check rows whose directive starts with script-src.</p>
+        <section className="flex flex-col gap-2 rounded-lg border border-border/70 p-3"><h3 className="text-sm font-semibold">Adcash diagnostics</h3>{smartlinkDiagnostics?.adcashChecks.map((check) => <p key={check.key} className="text-xs text-muted-foreground">{check.ok ? 'OK' : 'Needs attention'}: {check.message}</p>)}</section>
+      </NetworkCard>
       <NetworkCard title="Adsterra" active={settings.networks.adsterra.active} onToggle={(active) => update((draft) => { draft.networks.adsterra.active = active })}>
         {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} banner active`, settings.networks.adsterra.bannerActive[size], (active) => update((draft) => { draft.networks.adsterra.bannerActive[size] = active }))}<SnippetField network="Adsterra" size={size} value={settings.networks.adsterra.banner[size]} onChange={(value) => update((draft) => { draft.networks.adsterra.banner[size] = value })} /></div>)}
         <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle('Native placement active', settings.networks.adsterra.nativeActive, (active) => update((draft) => { draft.networks.adsterra.nativeActive = active }))}<SnippetField network="Adsterra" size="native" value={settings.networks.adsterra.native} onChange={(value) => update((draft) => { draft.networks.adsterra.native = value })} /></div>
@@ -114,6 +129,7 @@ export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: s
 }
 
 type SnippetValidation = { ok: boolean; issues: string[]; html: string; width?: number; height?: number; unitId?: string }
+type AdcashValidation = { ok: boolean; issues: string[]; format?: 'autotag' | 'pop'; zoneId?: string }
 const slotDimensions: Record<AdSize, { width: number; height: number }> = { '320x100': { width: 320, height: 100 }, '300x250': { width: 300, height: 250 }, '728x90': { width: 728, height: 90 }, native: { width: 0, height: 0 } }
 
 function SnippetField({ network, size, value, onChange }: { network: Extract<AdNetwork, 'A-ADS' | 'Adsterra'>; size: AdSize; value: string; onChange: (value: string) => void }) {
@@ -159,6 +175,38 @@ function SnippetField({ network, size, value, onChange }: { network: Extract<AdN
         <iframe title={`${network} ${size} ad preview`} srcDoc={previewDocument} sandbox="allow-scripts allow-popups" className="h-[360px] w-full rounded-lg border border-border bg-background" />
       </DialogContent>
     </Dialog>
+  </div>
+}
+
+function AdcashField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [candidate, setCandidate] = useState('')
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setCandidate(value), 300)
+    return () => window.clearTimeout(timeout)
+  }, [value])
+  const { data, error, isLoading } = useSWR<AdcashValidation>(candidate.trim() ? ['/api/admin/ads/snippets/validate', candidate] as const : null, async ([url, snippet]) => {
+    const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ network: 'Adcash', size: 'native', snippet }) })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error ?? 'Unable to validate Adcash code')
+    return result as AdcashValidation
+  }, { revalidateOnFocus: false })
+  const current = candidate === value ? data : undefined
+  const currentError = candidate === value ? error : undefined
+  const pending = Boolean(value.trim()) && (candidate !== value || isLoading)
+
+  return <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">
+    <label htmlFor="adcash-code" className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">Paste the Adcash code (both script blocks) or just the zone id
+      <textarea id="adcash-code" value={value} onChange={(event) => onChange(event.target.value)} rows={6} maxLength={8192} spellCheck={false} className="rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground" />
+    </label>
+    <p className="text-xs text-muted-foreground">A zone ID by itself defaults to Autotag. Paste both official script blocks to select Pop format.</p>
+    <div className="flex flex-wrap items-center gap-2" aria-live="polite">
+      {pending && <Badge variant="outline">Checking…</Badge>}
+      {current && <Badge variant={current.ok ? 'secondary' : 'destructive'}>{current.ok ? 'Valid' : 'Invalid'}</Badge>}
+      {current?.ok && <span className="text-xs text-muted-foreground">Detected format: {current.format}; zone ID: {current.zoneId}</span>}
+      {current && !current.ok && current.issues[0] && <span className="text-xs text-destructive">{current.issues[0]}</span>}
+      {currentError && <span role="alert" className="text-xs text-destructive">{currentError.message}</span>}
+      {!value.trim() && <span className="text-xs text-muted-foreground">Paste a zone ID or the official Adcash code to validate it.</span>}
+    </div>
   </div>
 }
 

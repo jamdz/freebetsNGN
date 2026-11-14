@@ -7,7 +7,12 @@ import { adPageFromPath, type AdNetwork, type AdPage, type AdPosition, type AdSi
 import { useAdConsent } from '@/components/ads/AdSlot'
 
 type SlotConfig = { position: AdPosition; network: AdNetwork; size: AdSize; index: number }
-type AdConfig = { page: AdPage | null; consent: boolean; enabled: boolean; previewMode: boolean; slots: SlotConfig[]; globalScripts?: { socialBar: string; popunder: string; popunderFrequencyMinutes: number; popunderPages: AdPage[] } }
+type AdcashConfig = { format: 'autotag' | 'pop'; zoneId: string }
+type AdcashWindow = Window & {
+  aclib?: { runAutoTag?: (options: { zoneId: string }) => void; runPop?: (options: { zoneId: string }) => void }
+  __freebetAdcashZoneStarted?: boolean
+}
+type AdConfig = { page: AdPage | null; consent: boolean; enabled: boolean; previewMode: boolean; slots: SlotConfig[]; globalScripts?: { socialBar: string; popunder: string; popunderFrequencyMinutes: number; popunderPages: AdPage[]; adcash: AdcashConfig | null } }
 const fetcher = async (url: string): Promise<AdConfig> => {
   const response = await fetch(url, { cache: 'no-store' })
   if (!response.ok) throw new Error('Unable to load ads')
@@ -89,6 +94,33 @@ export function AdManager({ children }: { children: React.ReactNode }) {
     loadOnce(socialBar, 'social_bar', Boolean(data?.enabled))
     loadOnce(popunderUrl, 'popunder', popunderAllowed)
   }, [consent, data?.enabled, data?.previewMode, modalOpen, page, popunderAllowed, popunderUrl, socialBar])
+
+  const adcash = data?.globalScripts?.adcash
+  useEffect(() => {
+    if (!page || consent !== true || modalOpen || data?.previewMode || !adcash) return
+    const browserWindow = window as AdcashWindow
+    const startZone = () => {
+      if (browserWindow.__freebetAdcashZoneStarted) return
+      const api = browserWindow.aclib
+      const run = adcash.format === 'autotag' ? api?.runAutoTag : api?.runPop
+      if (typeof run !== 'function') return
+      browserWindow.__freebetAdcashZoneStarted = true
+      run.call(api, { zoneId: adcash.zoneId })
+    }
+    let script = document.getElementById('aclib') as HTMLScriptElement | null
+    if (!script) {
+      script = document.createElement('script')
+      script.id = 'aclib'
+      script.src = 'https://acscdn.com/script/aclib.js'
+      script.async = true
+      document.head.append(script)
+    }
+    if (browserWindow.aclib) {
+      startZone()
+      return
+    }
+    script.addEventListener('load', startZone, { once: true })
+  }, [adcash, consent, data?.previewMode, modalOpen, page])
 
   if (!page || consent !== true) return <>{children}</>
   return <section className="w-full">
