@@ -1,9 +1,10 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { adPageFromPath, type AdPage, type AdSettings, type AdSize } from '@/lib/ad-settings'
+import { safeGlobalScriptUrl } from '@/lib/server/ad-snippets'
 
 export const AD_PAGES: AdPage[] = ['Home', 'Fixtures', 'Predictions', 'Leaderboard', 'Rewards', 'Earn', 'Referrals', 'Profile', 'Spin']
-export const AD_SIZES: AdSize[] = ['320x100', '300x250', '728x90']
+export const AD_SIZES: AdSize[] = ['320x100', '300x250', '728x90', 'native']
 const emptyPlacements = () => Object.fromEntries(AD_PAGES.map((page) => [page, { enabled: false, slots: [] }])) as unknown as AdSettings['placements']
 const emptySizeValues = () => Object.fromEntries(AD_SIZES.map((size) => [size, ''])) as Record<AdSize, string>
 const emptySizeSwitches = () => Object.fromEntries(AD_SIZES.map((size) => [size, false])) as Record<AdSize, boolean>
@@ -86,17 +87,7 @@ export function safeCreative(value: string) {
 }
 
 export function safeScriptUrl(value: string) {
-  let candidate = value.trim()
-  if (/^<script\b/i.test(candidate)) {
-    const tag = candidate.match(/^<script\b([^>]*)>\s*<\/script\s*>$/i)
-    const src = tag?.[1].match(/(?:^|\s)src\s*=\s*(["'])(.*?)\1/i)
-    if (!src) return ''
-    candidate = src[2]
-  }
-  try {
-    const url = new URL(candidate.startsWith('//') ? `https:${candidate}` : candidate)
-    return url.protocol === 'https:' && !url.username && !url.password && url.pathname.toLowerCase().endsWith('.js') ? url.toString() : ''
-  } catch { return '' }
+  return safeGlobalScriptUrl(value)
 }
 
 export function resolvePage(request: Request, requestedPage: string | null) {

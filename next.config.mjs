@@ -33,6 +33,7 @@ const contentSecurityPolicy = [
   `font-src 'self' data:`,
   `connect-src 'self' ${supabaseOrigin} ${supabaseSocketOrigin} ${analyticsHosts.join(' ')} ${adHosts.join(' ')}`,
   `frame-src 'self' ${adHosts.join(' ')}`,
+  'report-uri /api/csp-report',
   'upgrade-insecure-requests',
 ].join('; ')
 

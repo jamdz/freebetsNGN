@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams
   const surface = params.get('surface') ?? undefined
   const refererPath = (() => { try { return new URL(request.headers.get('referer') ?? '').pathname } catch { return '' } })()
-  const smartlinkRefererAllowed = /^\/(?:earn|home|predictions)(?:\/|$)/i.test(refererPath)
+  const smartlinkRefererAllowed = /^\/(?:earn|home|predictions|fixtures)(?:\/|$)/i.test(refererPath)
   const page = surface === 'smartlink' && params.get('page') === 'Earn' && smartlinkRefererAllowed ? 'Earn' : resolvePage(request, params.get('page'))
   const excludedSurface = ['prediction-dialog', 'withdrawal-dialog', 'spin-result-dialog', 'admin', 'auth'].includes(surface ?? '')
   if (!page || excludedSurface) return NextResponse.json({ page: null, consent: false, enabled: false, previewMode: false, slots: [], smartlink: null }, { headers: { 'Cache-Control': 'private, no-store' } })
