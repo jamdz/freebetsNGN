@@ -20,6 +20,49 @@ export function reportRecord(value: unknown): Record<string, unknown> | null {
   return report && typeof report === 'object' && !Array.isArray(report) ? report as Record<string, unknown> : null
 }
 
+const hostname = (value: unknown) => {
+  if (typeof value !== 'string' || !value || /^(?:inline|eval|self|data|blob)(?::|$)/i.test(value)) return ''
+  try { return new URL(value).hostname.toLowerCase() } catch { return '' }
+}
+
+const documentCategory = (value: unknown) => {
+  if (typeof value !== 'string' || !value) return 'missing'
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'about:') return url.pathname === 'blank' ? 'about:blank' : 'about:other'
+    return url.protocol === 'https:' || url.protocol === 'http:' ? 'http-document' : 'other-document'
+  } catch { return 'invalid' }
+}
+
+const resourceType = (directive: string) => {
+  if (directive.includes('img-src')) return 'image'
+  if (directive.includes('script-src')) return 'script'
+  if (directive.includes('frame-src') || directive.includes('child-src')) return 'frame'
+  if (directive.includes('style-src')) return 'style'
+  if (directive.includes('font-src')) return 'font'
+  if (directive.includes('connect-src')) return 'connection'
+  if (directive.includes('media-src')) return 'media'
+  return 'other'
+}
+
+export function sanitizeCspViolation(report: Record<string, unknown>) {
+  const blocked = report['blocked-uri'] ?? report.blockedURL ?? report.blockedURI ?? report.blockedUri
+  const directive = String(report['effective-directive'] ?? report.effectiveDirective ?? report['violated-directive'] ?? report.violatedDirective ?? 'unknown').slice(0, 80)
+  const policy = String(report['original-policy'] ?? report.originalPolicy ?? '')
+  const policyScope = policy.includes("default-src 'none'") ? 'ad-frame-policy' : policy ? 'application-policy' : 'unknown-policy'
+  const statusCode = Number(report['status-code'] ?? report.statusCode ?? 0)
+  return {
+    directive,
+    resourceType: resourceType(directive),
+    blockedHost: hostname(blocked),
+    documentCategory: documentCategory(report['document-uri'] ?? report.documentURL ?? report.documentUri),
+    sourceFileHost: hostname(report['source-file'] ?? report.sourceFile),
+    policyScope,
+    statusCode: Number.isFinite(statusCode) ? statusCode : 0,
+    disposition: String(report.disposition ?? '').slice(0, 32),
+  }
+}
+
 export function redactDatabaseMessage(message: string) {
   const constraintViolation = message.match(/^new row for relation "([a-z0-9_]+)" violates check constraint "([a-z0-9_]+)"$/i)
   const safeMessage = constraintViolation

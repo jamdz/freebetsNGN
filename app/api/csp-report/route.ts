@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { enforceRateLimit } from '@/lib/server/rate-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { CSP_REPORT_MAX_BYTES, isSupportedCspContentType, isWithinCspReportLimit, redactDatabaseMessage, reportRecord } from '@/lib/server/csp-report-utils'
+import { CSP_REPORT_MAX_BYTES, isSupportedCspContentType, isWithinCspReportLimit, redactDatabaseMessage, reportRecord, sanitizeCspViolation } from '@/lib/server/csp-report-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,30 +34,12 @@ export async function POST(request: Request) {
   try { parsed = JSON.parse(body) } catch { return NextResponse.json({ error: 'Invalid report' }, { status: 400 }) }
   const report = reportRecord(parsed)
   if (!report) return NextResponse.json({ ok: true })
-  const blocked = String(report['blocked-uri'] ?? report.blockedURL ?? report.blockedURI ?? report.blockedUri ?? '')
-  const directive = String(report['effective-directive'] ?? report['violated-directive'] ?? report.effectiveDirective ?? report.violatedDirective ?? 'unknown')
-  const documentUri = String(report['document-uri'] ?? report.documentURL ?? report.documentUri ?? '')
-  const sourceFile = String(report['source-file'] ?? report.sourceFile ?? '')
-  const originalPolicy = String(report['original-policy'] ?? report.originalPolicy ?? '')
-  const statusCode = Number(report['status-code'] ?? report.statusCode ?? 0)
-  const disposition = String(report.disposition ?? '')
-  if (!blocked || /^(?:inline|eval|self|data|blob)(?::|$)/i.test(blocked)) return NextResponse.json({ ok: true })
-  let blockedHost: string
-  let documentCategory = 'other'
-  let sourceFileHost = ''
+  const violation = sanitizeCspViolation(report)
+  const blockedValue = String(report['blocked-uri'] ?? report.blockedURL ?? report.blockedURI ?? report.blockedUri ?? '')
+  if (!violation.blockedHost) return NextResponse.json({ ok: true })
   try {
-    const blockedUrl = new URL(blocked)
-    if (blockedUrl.origin === new URL(request.url).origin) return NextResponse.json({ ok: true })
-    blockedHost = blockedUrl.hostname
+    if (new URL(blockedValue).origin === new URL(request.url).origin) return NextResponse.json({ ok: true })
   } catch { return NextResponse.json({ ok: true }) }
-  try {
-    const documentUrl = new URL(documentUri)
-    documentCategory = documentUrl.protocol === 'about:' ? 'about' : 'url'
-  } catch {
-    if (!documentUri) documentCategory = 'missing'
-  }
-  try { sourceFileHost = new URL(sourceFile).hostname } catch { /* Keep the source host empty. */ }
-  const safePolicy = originalPolicy.slice(0, 1000).replace(/([?&][^\s;]+)/g, '[redacted-query]')
   let insertError: { code?: string; message?: string } | null = null
   try {
     const { error } = await createAdminClient().from('integration_logs').insert({
@@ -65,15 +47,7 @@ export async function POST(request: Request) {
       action: 'violation',
       status: 'error',
       latency_ms: 0,
-      detail: JSON.stringify({
-        directive,
-        blockedHost,
-        documentCategory,
-        sourceFileHost,
-        statusCode: Number.isFinite(statusCode) ? statusCode : 0,
-        disposition: disposition.slice(0, 32),
-        originalPolicy: safePolicy,
-      }),
+      detail: JSON.stringify(violation),
       created_at: new Date().toISOString(),
     })
     insertError = error

@@ -8,6 +8,7 @@ import { AdgemPostbackUrl } from '@/components/admin/adgem-postback-url'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { PUBLIC_FORM_AD_LIMITS, type AdPage, type AdSettings, type AdSize, type AdPlacementSlot, type AdNetwork } from '@/lib/ad-settings'
 import { useAdConsent } from '@/components/ads/AdSlot'
+import { isExpectedDiagnosticMessage } from '@/lib/ad-diagnostics'
 
 type NetworkResponse = AdSettings & { postbackSecretConfigured: boolean }
 const fetcher = async (url: string) => {
@@ -146,7 +147,7 @@ function SlotDiagnostic({ page, slot, size }: { page: AdPage; slot: number; size
   const dimensions = slotDimensions[size]
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source !== frameRef.current?.contentWindow || event.data?.type !== 'freebet-ad-diagnostic') return
+      if (!isExpectedDiagnosticMessage(event.source, frameRef.current?.contentWindow ?? null, event.data)) return
       const detail = event.data.detail && typeof event.data.detail === 'object' ? event.data.detail : {}
       const description = event.data.stage === 'script-requested' || event.data.stage === 'script-loaded' || event.data.stage === 'script-load-error' || event.data.stage === 'nested-frame-created' || event.data.stage === 'nested-frame-loaded' || event.data.stage === 'nested-frame-error'
         ? `${event.data.stage}${detail.host ? `: ${detail.host}` : ''}`
@@ -193,18 +194,19 @@ function AdsterraDiagnostic() {
 
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source !== frameRef.current?.contentWindow || event.data?.type !== 'freebet-ad-diagnostic') return
+      if (!isExpectedDiagnosticMessage(event.source, frameRef.current?.contentWindow ?? null, event.data)) return
       const stage = event.data.stage
       const detail = event.data.detail && typeof event.data.detail === 'object' ? event.data.detail : {}
       let message: string
       if (stage === 'server-creative-returned') message = `Saved creative returned; server frame response ${detail.httpStatus ?? 'unavailable'}; source host ${detail.sourceHost ?? 'not detected'}.`
       else if (stage === 'server-creative-unavailable') message = `Creative not returned: ${detail.reason ?? 'reason unavailable'}`
-      else if (stage === 'script-requested') message = `External script request initiated: ${detail.host ?? 'host unavailable'}.`
-      else if (stage === 'script-loaded') message = `External script loaded: ${detail.host ?? 'host unavailable'}. This does not confirm execution or ad rendering.`
-      else if (stage === 'script-load-error') message = `External script load failed: ${detail.host ?? 'host unavailable'}.`
-      else if (stage === 'nested-frame-created' || stage === 'nested-frame-loaded' || stage === 'nested-frame-error') message = `${stage}: ${detail.host ?? 'host unavailable'}.`
-      else if (stage === 'resource-error') message = `External resource error: ${detail.host ?? 'host unavailable'}.`
-      else if (stage === 'csp-violation') message = `CSP violation: ${detail.host || 'inline/unknown resource'}; ${detail.directive ?? 'directive unavailable'}.`
+      else if (stage === 'script-requested') message = `External script request initiated in ${detail.documentCategory ?? 'unknown document'}: ${detail.host ?? 'host unavailable'} (script).`
+      else if (stage === 'script-loaded') message = `External script loaded in ${detail.documentCategory ?? 'unknown document'}: ${detail.host ?? 'host unavailable'}. This does not confirm execution or ad rendering.`
+      else if (stage === 'script-load-error') message = `External script load failed in ${detail.documentCategory ?? 'unknown document'}: ${detail.host ?? 'host unavailable'}.`
+      else if (stage === 'image-requested' || stage === 'image-loaded' || stage === 'image-load-error') message = `${stage} in ${detail.documentCategory ?? 'unknown document'}: ${detail.host ?? 'host unavailable'} (image resource).`
+      else if (stage === 'nested-frame-created' || stage === 'nested-frame-loaded' || stage === 'nested-frame-error') message = `${stage}: ${detail.documentCategory ?? 'unknown frame'}${detail.host && detail.host !== 'about:blank' ? ` (${detail.host})` : ''}.`
+      else if (stage === 'resource-error') message = `External ${detail.resourceType ?? 'resource'} error in ${detail.documentCategory ?? 'unknown document'}: ${detail.host ?? 'host unavailable'}.`
+      else if (stage === 'csp-violation') message = `CSP violation in ${detail.documentCategory ?? 'unknown document'}: ${detail.resourceType ?? 'unknown resource'} from ${detail.host || 'inline/unknown source'}; ${detail.directive ?? 'directive unavailable'} (source file ${detail.sourceFileHost || 'not reported'}). Diagnostic was reported by the expected ad-frame only; nested-document violations may not be observable here.`
       else if (stage === 'visibility-check') message = `Visibility observation: ${detail.visible ? 'an ad-like element is visible' : 'no ad-like element is visible'} (${detail.elementCount ?? 0} observed). This is not proof of a paid impression.`
       else if (stage === 'document-start') message = `Diagnostic code started in an opaque-origin sandbox: ${detail.opaqueOrigin ? 'yes' : 'no'}.`
       else if (stage === 'creative-markup-ready') message = `Creative markup inspected (${detail.scripts ?? 0} external scripts, ${detail.iframes ?? 0} initial nested frames).`
