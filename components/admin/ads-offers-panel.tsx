@@ -118,6 +118,7 @@ export function AdsOffersPanel({ audit = () => undefined }: { audit?: (action: s
       <NetworkCard title="Adsterra" active={settings.networks.adsterra.active} onToggle={(active) => update((draft) => { draft.networks.adsterra.active = active })}>
         {sizes.map((size) => <div key={size} className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle(`${size} banner active`, settings.networks.adsterra.bannerActive[size], (active) => update((draft) => { draft.networks.adsterra.bannerActive[size] = active }))}<SnippetField network="Adsterra" size={size} value={settings.networks.adsterra.banner[size]} onChange={(value) => update((draft) => { draft.networks.adsterra.banner[size] = value })} /></div>)}
         <div className="flex flex-col gap-2 rounded-lg border border-border/70 p-3">{toggle('Native placement active', settings.networks.adsterra.nativeActive, (active) => update((draft) => { draft.networks.adsterra.nativeActive = active }))}<SnippetField network="Adsterra" size="native" value={settings.networks.adsterra.native} onChange={(value) => update((draft) => { draft.networks.adsterra.native = value })} /></div>
+        <AdsterraDiagnostic />
         <UrlField label="Social bar script URL or full script tag" value={settings.networks.adsterra.socialBar} active={settings.networks.adsterra.socialBarActive} onValue={(value) => update((draft) => { draft.networks.adsterra.socialBar = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.socialBarActive = active })} />
         <UrlField label="Popunder script URL or full script tag" value={settings.networks.adsterra.popunder} active={settings.networks.adsterra.popunderActive} onValue={(value) => update((draft) => { draft.networks.adsterra.popunder = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.popunderActive = active })} />
         <CreativeField label="Smartlink URL" value={settings.networks.adsterra.smartlink} active={settings.networks.adsterra.smartlinkActive} onValue={(value) => update((draft) => { draft.networks.adsterra.smartlink = value })} onActive={(active) => update((draft) => { draft.networks.adsterra.smartlinkActive = active })} />
@@ -175,6 +176,72 @@ function SlotDiagnostic({ page, slot, size }: { page: AdPage; slot: number; size
       </section>
     </DialogContent>
   </Dialog>
+}
+
+type AdsterraDiagnosticFormat = { size: AdSize; ready: boolean; reason: string; sourceHost: string | null }
+type AdsterraDiagnosticEvent = { stage: string; message: string }
+
+function AdsterraDiagnostic() {
+  const { consent } = useAdConsent()
+  const [format, setFormat] = useState<AdSize>('300x250')
+  const [running, setRunning] = useState(false)
+  const [events, setEvents] = useState<AdsterraDiagnosticEvent[]>([])
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const { data, error } = useSWR<{ network: 'Adsterra'; formats: AdsterraDiagnosticFormat[] }>('/api/admin/ads/diagnostics/adsterra', fetcher, { revalidateOnFocus: false })
+  const selected = data?.formats.find((item) => item.size === format)
+  const dimensions = slotDimensions[format]
+
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow || event.data?.type !== 'freebet-ad-diagnostic') return
+      const stage = event.data.stage
+      const detail = event.data.detail && typeof event.data.detail === 'object' ? event.data.detail : {}
+      let message: string
+      if (stage === 'server-creative-returned') message = `Saved creative returned; server frame response ${detail.httpStatus ?? 'unavailable'}; source host ${detail.sourceHost ?? 'not detected'}.`
+      else if (stage === 'server-creative-unavailable') message = `Creative not returned: ${detail.reason ?? 'reason unavailable'}`
+      else if (stage === 'script-requested') message = `External script request initiated: ${detail.host ?? 'host unavailable'}.`
+      else if (stage === 'script-loaded') message = `External script loaded: ${detail.host ?? 'host unavailable'}. This does not confirm execution or ad rendering.`
+      else if (stage === 'script-load-error') message = `External script load failed: ${detail.host ?? 'host unavailable'}.`
+      else if (stage === 'nested-frame-created' || stage === 'nested-frame-loaded' || stage === 'nested-frame-error') message = `${stage}: ${detail.host ?? 'host unavailable'}.`
+      else if (stage === 'resource-error') message = `External resource error: ${detail.host ?? 'host unavailable'}.`
+      else if (stage === 'csp-violation') message = `CSP violation: ${detail.host || 'inline/unknown resource'}; ${detail.directive ?? 'directive unavailable'}.`
+      else if (stage === 'visibility-check') message = `Visibility observation: ${detail.visible ? 'an ad-like element is visible' : 'no ad-like element is visible'} (${detail.elementCount ?? 0} observed). This is not proof of a paid impression.`
+      else if (stage === 'document-start') message = `Diagnostic code started in an opaque-origin sandbox: ${detail.opaqueOrigin ? 'yes' : 'no'}.`
+      else if (stage === 'creative-markup-ready') message = `Creative markup inspected (${detail.scripts ?? 0} external scripts, ${detail.iframes ?? 0} initial nested frames).`
+      else if (stage === 'document-loaded') message = 'Ad-frame document load event fired; external resource HTTP status is unavailable.'
+      else return
+      setEvents((current) => [...current.slice(-39), { stage, message }])
+    }
+    window.addEventListener('message', receive)
+    return () => window.removeEventListener('message', receive)
+  }, [])
+
+  const runDiagnostic = () => {
+    if (consent !== true || !selected?.ready) return
+    setEvents([])
+    setRunning(true)
+  }
+  const src = `/ad-frame?page=Landing&slot=0&debug=1&debugNetwork=Adsterra&format=${encodeURIComponent(format)}`
+
+  return <section className="flex flex-col gap-3 rounded-lg border border-border/70 p-3">
+    <div><h3 className="text-sm font-semibold">Adsterra visitor-sandbox diagnostic</h3><p className="text-xs text-muted-foreground">Tests the saved Adsterra creative independently of public placements. It does not change network or placement settings.</p></div>
+    <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground" htmlFor="adsterra-diagnostic-format">Adsterra format
+      <select id="adsterra-diagnostic-format" value={format} onChange={(event) => { setFormat(event.target.value as AdSize); setRunning(false); setEvents([]) }} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground">
+        {(['320x100', '300x250', '728x90', 'native'] as AdSize[]).map((size) => <option key={size} value={size}>{size}</option>)}
+      </select>
+    </label>
+    {error && <p role="alert" className="text-xs text-destructive">Unable to inspect configured Adsterra formats.</p>}
+    {selected && <div className="flex flex-col gap-1 text-xs" aria-live="polite"><p>{selected.ready ? 'Ready to test' : 'Unavailable'}: {selected.reason}</p><p className="text-muted-foreground">Creative source hostname: {selected.sourceHost ?? 'not detected'}</p><p className="text-muted-foreground">Script execution: unverified unless independently established. Provider inventory is not exposed by these browser events; the absence of a visible element cannot distinguish no inventory from a rendering issue.</p><p className="text-muted-foreground">A visible element is not proof of a paid impression.</p></div>}
+    <Button type="button" variant="outline" size="sm" disabled={consent !== true || !selected?.ready} onClick={runDiagnostic}>{running ? 'Restart diagnostic' : 'Test saved Adsterra creative'}</Button>
+    {consent !== true && <p className="text-xs text-muted-foreground">Accept advertising consent in this browser to run the visitor-style frame.</p>}
+    {running && selected?.ready && <>
+      <p className="text-xs text-muted-foreground">Selected network: Adsterra · Format: {format} · Source: {selected.sourceHost ?? 'not detected'} · The frame response is HTTP 200 when its diagnostic document loads; provider HTTP status is not exposed here.</p>
+      <div className="flex items-center justify-center overflow-hidden rounded-lg border border-border bg-background" style={{ height: format === 'native' ? 60 : dimensions.height }}>
+        <iframe key={format} ref={frameRef} title={`Adsterra ${format} visitor-sandbox diagnostic`} src={src} width={format === 'native' ? undefined : dimensions.width} height={format === 'native' ? 60 : dimensions.height} style={format === 'native' ? { width: '100%', height: 60 } : undefined} loading="lazy" className="max-w-full rounded-xl border-0 bg-background" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" />
+      </div>
+      <section aria-live="polite" className="max-h-48 overflow-auto rounded-lg border border-border/70 p-3 text-xs"><h4 className="font-semibold">Browser observations</h4><ol className="mt-2 flex list-inside list-decimal flex-col gap-1">{events.map((item, index) => <li key={`${index}-${item.stage}`}>{item.message}</li>)}</ol>{events.length === 0 && <p className="mt-2 text-muted-foreground">Waiting for events from this diagnostic iframe only.</p>}</section>
+    </>}
+  </section>
 }
 
 function SnippetField({ network, size, value, onChange }: { network: Extract<AdNetwork, 'A-ADS' | 'Adsterra'>; size: AdSize; value: string; onChange: (value: string) => void }) {

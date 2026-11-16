@@ -21,7 +21,7 @@ const securityHeaders = {
 const htmlEntities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => htmlEntities[character])
 const empty = (debug: boolean, message = 'No active creative is available for this placement.') => debug
-  ? new Response(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;padding:12px;background:#111;color:#fff;font:13px system-ui"><strong>Ad slot check</strong><p>${escapeHtml(message)}</p></body></html>`, { status: 200, headers: { ...securityHeaders, 'Cache-Control': 'private, no-store' } })
+  ? new Response(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;padding:12px;background:#111;color:#fff;font:13px system-ui"><strong>Ad slot check</strong><p>${escapeHtml(message)}</p><script>parent.postMessage({type:'freebet-ad-diagnostic',stage:'server-creative-unavailable',detail:{reason:${JSON.stringify(message).replaceAll('<', '\\u003c')}}},'*')</script></body></html>`, { status: 200, headers: { ...securityHeaders, 'Cache-Control': 'private, no-store' } })
   : new Response(null, { status: 204, headers: securityHeaders })
 
 export async function GET(request: Request) {
@@ -30,6 +30,8 @@ export async function GET(request: Request) {
   const slotParam = params.get('slot')
   const hasAdConsent = /(?:^|;\s*)freebet_ads_consent=accepted(?:;|$)/.test(request.headers.get('cookie') ?? '')
   const debug = params.get('debug') === '1' && hasAdConsent && await hasAdminSession()
+  const debugNetwork = debug && params.get('debugNetwork') === 'Adsterra'
+  const formatParam = params.get('format')
   if (!hasAdConsent) return empty(false)
   if (!pageParam || !AD_PAGES.includes(pageParam as AdPage) || !slotParam || !/^\d+$/.test(slotParam)) return empty(debug, 'The page or slot identifier is invalid.')
 
@@ -49,27 +51,35 @@ export async function GET(request: Request) {
     const placement = settings.placements[page]
     const index = Number(slotParam)
     const slot = placement?.slots[index]
-    if (!placement?.enabled) return empty(debug, 'The page placement is disabled.')
-    if (!slot || !dimensions[slot.size]) return empty(debug, 'No slot is configured at this index.')
+    const validFormats: AdSize[] = ['320x100', '300x250', '728x90', 'native']
+    if (debugNetwork && !validFormats.includes(formatParam as AdSize)) return empty(true, 'The selected Adsterra format is invalid.')
+    if (!debugNetwork && !placement?.enabled) return empty(debug, 'The page placement is disabled.')
+    if (!debugNetwork && (!slot || !dimensions[slot.size])) return empty(debug, 'No slot is configured at this index.')
 
+    const network = debugNetwork ? 'Adsterra' : slot!.network
+    const size = debugNetwork ? formatParam as AdSize : slot!.size
     let source = ''
-    if (slot.network === 'A-ADS') {
+    if (network === 'A-ADS') {
       const config = settings.networks.aads
-      const stored = config.active && config.unitActive[slot.size] ? config.units[slot.size] : ''
-      if (isAadsUnitId(stored)) source = aadsUnitSnippet(stored, dimensions[slot.size])
+      const stored = config.active && config.unitActive[size] ? config.units[size] : ''
+      if (isAadsUnitId(stored)) source = aadsUnitSnippet(stored, dimensions[size])
       else source = stored
     } else {
       const config = settings.networks.adsterra
-      source = !config.active ? '' : slot.size === 'native'
-        ? config.nativeActive ? config.native : ''
-        : config.bannerActive[slot.size] ? config.banner[slot.size] : ''
+      if (!config.active) return empty(debug, 'Adsterra network is disabled.')
+      const formatActive = size === 'native' ? config.nativeActive : config.bannerActive[size]
+      if (!formatActive) return empty(debug, `Adsterra ${size} format is disabled.`)
+      source = size === 'native' ? config.native : config.banner[size]
     }
-    if (!source) return empty(debug, `${slot.network} is inactive or the selected ${slot.size} creative switch is off.`)
+    if (!source) return empty(debug, `No saved ${network} ${size} creative.`)
 
     const parsed = parseAdSnippet(source)
     if (!parsed.ok) return empty(debug, `Saved creative failed validation: ${parsed.issues.join(' ')}`)
-    const isNative = slot.size === 'native'
-    const pageScript = `<script>const page=${JSON.stringify(page)},slot=${JSON.stringify(slotParam)};${isNative ? "const sendHeight=()=>parent.postMessage({type:'freebet-ad-height',page,slot,size:'native',height:document.documentElement.scrollHeight},'*');new ResizeObserver(sendHeight).observe(document.documentElement);" : ''}${debug ? "const diagnostic=(stage,detail={})=>parent.postMessage({type:'freebet-ad-diagnostic',page,slot,stage,detail},'*');diagnostic('document-start',{origin:location.origin,opaqueOrigin:location.origin==='null'});const seenScripts=new WeakSet(),seenFrames=new WeakSet();const inspect=node=>{if(!(node instanceof Element))return;if(node.matches('script[src]')&&!seenScripts.has(node)){seenScripts.add(node);const url=new URL(node.src,location.href);diagnostic('script-requested',{host:url.host});node.addEventListener('load',()=>diagnostic('script-loaded',{host:url.host}));node.addEventListener('error',()=>diagnostic('script-load-error',{host:url.host}));}if(node.matches('iframe')&&!seenFrames.has(node)){seenFrames.add(node);diagnostic('nested-frame-created',{host:node.src?new URL(node.src,location.href).host:'unknown'});node.addEventListener('load',()=>diagnostic('nested-frame-loaded',{host:node.src?new URL(node.src,location.href).host:'unknown'}));node.addEventListener('error',()=>diagnostic('nested-frame-error',{host:node.src?new URL(node.src,location.href).host:'unknown'}));}};new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(inspect))).observe(document,{subtree:true,childList:true});document.querySelectorAll('script[src],iframe').forEach(inspect);addEventListener('error',event=>{const target=event.target;diagnostic(target&&target.src?'resource-error':'script-error',{host:target&&target.src?new URL(target.src,location.href).host:'',message:event.message||''})},true);addEventListener('securitypolicyviolation',event=>diagnostic('csp-violation',{blockedURI:event.blockedURI,directive:event.violatedDirective}));const reportBox=document.createElement('pre');reportBox.style='position:fixed;bottom:0;left:0;right:0;max-height:35vh;overflow:auto;margin:0;padding:6px;background:#111;color:#fff;font:11px monospace;z-index:2147483647';document.body.append(reportBox);function report(message){const line=document.createElement('div');line.textContent=message;reportBox.append(line)}diagnostic('creative-markup-ready',{scripts:document.querySelectorAll('script[src]').length,iframes:document.querySelectorAll('iframe').length});" : ''}addEventListener('load',()=>{${isNative ? 'sendHeight();' : ''}${debug ? "report('Iframe document loaded; creative markup was validated. This does not confirm script execution, a visible ad, or a paid impression.');diagnostic('document-loaded',{visible:document.visibilityState==='visible'});" : ''}});${debug ? "const observe=()=>{const adElements=[...document.querySelectorAll('iframe,ins,[id*=ad]')];const visible=adElements.some(element=>{const rect=element.getBoundingClientRect(),style=getComputedStyle(element);return rect.width>1&&rect.height>1&&style.display!=='none'&&style.visibility!=='hidden'});diagnostic('visibility-check',{visible,elementCount:adElements.length});};new MutationObserver(observe).observe(document.documentElement,{subtree:true,childList:true,attributes:true});setInterval(observe,3000);" : ''}</script>`
+    const isNative = size === 'native'
+    let creativeHost = 'none detected'
+    const creativeSource = parsed.html.match(/\bsrc="(https:\/\/[^\"]+)"/i)?.[1]
+    if (creativeSource) { try { creativeHost = new URL(creativeSource).hostname } catch {} }
+    const pageScript = `<script>const page=${JSON.stringify(page)},slot=${JSON.stringify(slotParam)};${isNative ? "const sendHeight=()=>parent.postMessage({type:'freebet-ad-height',page,slot,size:'native',height:document.documentElement.scrollHeight},'*');new ResizeObserver(sendHeight).observe(document.documentElement);" : ''}${debug ? `const diagnostic=(stage,detail={})=>parent.postMessage({type:'freebet-ad-diagnostic',page,slot,stage,detail},'*');diagnostic('document-start',{origin:location.origin,opaqueOrigin:location.origin==='null'});diagnostic('server-creative-returned',{network:${JSON.stringify(network)},format:${JSON.stringify(size)},sourceHost:${JSON.stringify(creativeHost)},httpStatus:200});const seenScripts=new WeakSet(),seenFrames=new WeakSet();const resourceHost=value=>{try{return new URL(value,location.href).hostname}catch{return 'unknown'}};` : ''}${debug ? "const inspect=node=>{if(!(node instanceof Element))return;if(node.matches('script[src]')&&!seenScripts.has(node)){seenScripts.add(node);const url=new URL(node.src,location.href);diagnostic('script-requested',{host:url.hostname});node.addEventListener('load',()=>diagnostic('script-loaded',{host:url.hostname}));node.addEventListener('error',()=>diagnostic('script-load-error',{host:url.hostname}));}if(node.matches('iframe')&&!seenFrames.has(node)){seenFrames.add(node);diagnostic('nested-frame-created',{host:node.src?resourceHost(node.src):'unknown'});node.addEventListener('load',()=>diagnostic('nested-frame-loaded',{host:node.src?resourceHost(node.src):'unknown'}));node.addEventListener('error',()=>diagnostic('nested-frame-error',{host:node.src?resourceHost(node.src):'unknown'}));}};new MutationObserver(records=>records.forEach(record=>record.addedNodes.forEach(inspect))).observe(document,{subtree:true,childList:true});document.querySelectorAll('script[src],iframe').forEach(inspect);addEventListener('error',event=>{const target=event.target;diagnostic(target&&target.src?'resource-error':'script-error',{host:target&&target.src?resourceHost(target.src):'unknown'})},true);addEventListener('securitypolicyviolation',event=>{let host='';try{host=new URL(event.blockedURI).hostname}catch{}diagnostic('csp-violation',{host,directive:event.violatedDirective})});const reportBox=document.createElement('pre');reportBox.style='position:fixed;bottom:0;left:0;right:0;max-height:35vh;overflow:auto;margin:0;padding:6px;background:#111;color:#fff;font:11px monospace;z-index:2147483647';document.body.append(reportBox);function report(message){const line=document.createElement('div');line.textContent=message;reportBox.append(line)}diagnostic('creative-markup-ready',{scripts:document.querySelectorAll('script[src]').length,iframes:document.querySelectorAll('iframe').length});" : ''}addEventListener('load',()=>{${isNative ? 'sendHeight();' : ''}${debug ? "report('Iframe document loaded; creative markup was validated. This does not confirm script execution, a visible ad, or a paid impression.');diagnostic('document-loaded',{visible:document.visibilityState==='visible'});" : ''}});${debug ? "const observe=()=>{const adElements=[...document.querySelectorAll('iframe,ins,[id*=ad]')];const visible=adElements.some(element=>{const rect=element.getBoundingClientRect(),style=getComputedStyle(element);return rect.width>1&&rect.height>1&&style.display!=='none'&&style.visibility!=='hidden'});diagnostic('visibility-check',{visible,elementCount:adElements.length});};new MutationObserver(observe).observe(document.documentElement,{subtree:true,childList:true,attributes:true});setInterval(observe,3000);" : ''}</script>`
     const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="background:transparent;margin:0;${isNative ? '' : 'display:flex;align-items:center;justify-content:center;overflow:hidden;'}">${pageScript}${parsed.html}</body></html>`
     return new Response(html, { status: 200, headers: { ...securityHeaders, 'Cache-Control': 'private, no-store' } })
   } catch {
