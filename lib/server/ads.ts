@@ -1,7 +1,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { adPageFromPath, isValidPublicFormPlacement, PUBLIC_FORM_AD_LIMITS, type AdPage, type AdSettings, type AdSize } from '@/lib/ad-settings'
-import { safeGlobalScriptUrl } from '@/lib/server/ad-snippets'
+import { isAadsUnitId, parseAdSnippet, safeGlobalScriptUrl } from '@/lib/server/ad-snippets'
 
 export const AD_PAGES: AdPage[] = ['Home', 'Fixtures', 'Predictions', 'Leaderboard', 'Rewards', 'Earn', 'Referrals', 'Profile', 'Spin', 'Landing', 'Login', 'Signup', 'Terms', 'Privacy', 'PrizeRules', 'ResponsiblePlay']
 export const AD_SIZES: AdSize[] = ['320x100', '300x250', '728x90', 'native']
@@ -127,6 +127,16 @@ export function publicAdConfig(settings: AdSettings, page: AdPage, consent: bool
   const validFormPlacement = isValidPublicFormPlacement(page, configuredSlots)
   const slots = configuredSlots.flatMap((slot, index) => {
     if (!placement?.enabled || (PUBLIC_FORM_AD_LIMITS.pages.includes(page as typeof PUBLIC_FORM_AD_LIMITS.pages[number]) && (!validFormPlacement || slot.position !== PUBLIC_FORM_AD_LIMITS.position))) return []
+    if (!settings.previewMode && slot.network === 'A-ADS') {
+      const { aads } = settings.networks
+      const creative = aads.units[slot.size]
+      if (!aads.active || !aads.unitActive[slot.size] || !(isAadsUnitId(creative) || parseAdSnippet(creative).ok)) return []
+    } else if (!settings.previewMode) {
+      const { adsterra } = settings.networks
+      const active = slot.size === 'native' ? adsterra.nativeActive : adsterra.bannerActive[slot.size]
+      const creative = slot.size === 'native' ? adsterra.native : adsterra.banner[slot.size]
+      if (!adsterra.active || !active || !parseAdSnippet(creative).ok) return []
+    }
     return [{ position: slot.position, network: slot.network, size: slot.size, index }]
   })
   const adsterra = settings.networks.adsterra

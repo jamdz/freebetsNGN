@@ -8,15 +8,18 @@ export async function GET() {
   if ('response' in auth) return auth.response
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await auth.supabase.from('integration_logs')
-    .select('response_summary,created_at')
-    .eq('provider', 'csp').eq('event_type', 'violation').gte('created_at', since)
-  if (error) return NextResponse.json({ error: 'Unable to load blocked hosts' }, { status: 500 })
+    .select('detail,created_at')
+    .eq('integration_key', 'csp').eq('action', 'violation').gte('created_at', since)
+  if (error) {
+    console.error('[ads/blocked-hosts] Failed to read CSP diagnostics', { code: error.code ?? 'unknown' })
+    return NextResponse.json({ error: 'Unable to load blocked hosts' }, { status: 500 })
+  }
   const groups = new Map<string, { blockedHost: string; directive: string; count: number }>()
   for (const row of data ?? []) {
     let detail: Record<string, unknown> = {}
     try {
-      const raw = row.response_summary
-      detail = typeof raw === 'string' ? JSON.parse(raw) : raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+      const raw = row.detail
+      detail = typeof raw === 'string' ? JSON.parse(raw) : raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {}
     } catch { continue }
     const blockedHost = typeof detail.blockedHost === 'string' ? detail.blockedHost : ''
     const directive = typeof detail.directive === 'string' ? detail.directive : ''

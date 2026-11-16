@@ -51,14 +51,20 @@ export async function POST(request: Request) {
   try {
     const blockedUrl = new URL(blocked)
     if (blockedUrl.origin === new URL(request.url).origin) return NextResponse.json({ ok: true })
-    blockedHost = blockedUrl.host
+    blockedHost = blockedUrl.hostname
   } catch { return NextResponse.json({ ok: true }) }
   try { path = new URL(documentUri).pathname } catch { /* Keep the default path. */ }
-  const detail = JSON.stringify({ directive, blockedHost, path })
   const { error } = await createAdminClient().from('integration_logs').insert({
-    provider: 'csp', event_type: 'violation', success: false, response_status: 0,
-    error_message: 'Content Security Policy violation', response_summary: detail,
+    integration_key: 'csp',
+    action: 'violation',
+    status: 'blocked',
+    latency_ms: 0,
+    detail: { directive, blockedHost, path },
+    created_at: new Date().toISOString(),
   })
-  if (error) return NextResponse.json({ error: 'Unable to store report' }, { status: 500 })
+  if (error) {
+    console.error('[csp-report] Failed to persist a CSP violation', { code: error.code ?? 'unknown' })
+    return NextResponse.json({ error: 'Unable to store report' }, { status: 500 })
+  }
   return new Response(null, { status: 204 })
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-api'
-import { safeCreative, readAdSettings } from '@/lib/server/ads'
+import { AD_PAGES, safeCreative, readAdSettings } from '@/lib/server/ads'
+import { isAadsUnitId, parseAdSnippet } from '@/lib/server/ad-snippets'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +30,25 @@ export async function GET(request: Request) {
       { key: 'pageAllowed', ok: adcash.allowedPages.includes(page), message: adcash.allowedPages.includes(page) ? `${page} is allowed for Adcash.` : `Add ${page} to Adcash allowed pages.` },
       { key: 'scriptHostConfigured', ok: adcashHostConfigured, message: adcashHostConfigured ? 'acscdn.com is included in AD_SCRIPT_HOSTS.' : 'Add acscdn.com to AD_SCRIPT_HOSTS and redeploy.' },
     ]
-    return NextResponse.json({ page, checks, adcashChecks, visitorsMustAcceptCookieBanner: true }, { headers: { 'Cache-Control': 'private, no-store' } })
+    const slots = AD_PAGES.flatMap((slotPage) => settings.placements[slotPage].slots.map((slot, index) => {
+      const placementEnabled = settings.placements[slotPage].enabled
+      const network = slot.network === 'A-ADS' ? settings.networks.aads : settings.networks.adsterra
+      const networkActive = network.active
+      const sizeActive = slot.network === 'A-ADS'
+        ? settings.networks.aads.unitActive[slot.size]
+        : slot.size === 'native' ? settings.networks.adsterra.nativeActive : settings.networks.adsterra.bannerActive[slot.size]
+      const creative = slot.network === 'A-ADS' ? settings.networks.aads.units[slot.size] : slot.size === 'native' ? settings.networks.adsterra.native : settings.networks.adsterra.banner[slot.size]
+      const creativeValid = slot.network === 'A-ADS' && isAadsUnitId(creative) || parseAdSnippet(creative).ok
+      const ready = placementEnabled && networkActive && sizeActive && creativeValid
+      const reason = !placementEnabled ? 'Placement is disabled.'
+        : !networkActive ? `${slot.network} is disabled.`
+          : !sizeActive ? `${slot.size} format is disabled.`
+            : !creative.trim() ? 'No creative is saved.'
+              : !creativeValid ? 'Saved creative failed snippet validation.'
+                : settings.previewMode ? 'Ready; visitors will see the preview placeholder.' : 'Ready for visitor delivery.'
+      return [{ page: slotPage, index, position: slot.position, network: slot.network, size: slot.size, ready, reason, previewMode: settings.previewMode }]
+    }))
+    return NextResponse.json({ page, checks, adcashChecks, slots, visitorsMustAcceptCookieBanner: true }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch {
     return NextResponse.json({ error: 'Unable to inspect smartlink settings' }, { status: 500 })
   }
