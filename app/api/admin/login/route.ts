@@ -41,7 +41,11 @@ export async function POST(request: Request) {
   try { session = await createAdminSession(credentials.email, request) }
   catch { return unavailable('session-persistence') }
   const response = NextResponse.json({ ok: true, requiresTotp: false })
-  const cookieOptions = session.stateless ? { ...adminCookieOptions, maxAge: ADMIN_STATELESS_SESSION_TTL_SECONDS } : adminCookieOptions
+  const previewEnvironment = process.env.NODE_ENV !== 'production' || process.env.VERCEL_ENV === 'preview'
+  const previewCookieOptions = previewEnvironment
+    ? { ...adminCookieOptions, sameSite: 'none' as const, partitioned: true }
+    : adminCookieOptions
+  const cookieOptions = session.stateless ? { ...previewCookieOptions, maxAge: ADMIN_STATELESS_SESSION_TTL_SECONDS } : previewCookieOptions
   response.cookies.set(ADMIN_COOKIE, session.cookie, cookieOptions)
   return response
 }
