@@ -13,7 +13,7 @@ const dimensions: Record<AdSize, { width: number; height: number }> = {
 }
 const securityHeaders = {
   'Content-Type': 'text/html; charset=utf-8',
-  'Cache-Control': 'public, max-age=60',
+  'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'SAMEORIGIN',
   'Content-Security-Policy': "default-src 'none'; script-src https: 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline' https:; img-src https: data:; font-src https: data:; frame-src https:; connect-src https:; media-src https:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; report-uri /api/csp-report",
