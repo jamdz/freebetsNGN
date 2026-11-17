@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const email = typeof body.email === 'string' ? body.email.trim() : ''
   const password = typeof body.password === 'string' ? body.password : ''
   const code = typeof body.code === 'string' ? body.code : ''
-  const isPreview = process.env.NODE_ENV !== 'production'
+  const isPreview = process.env.NODE_ENV !== 'production' || process.env.VERCEL_ENV === 'preview'
   if (!isPreview) {
     try { if (await isAdminLoginLocked(email, ip)) return NextResponse.json({ error: 'Too many login attempts. Try again later.' }, { status: 429 }) }
     catch { return unavailable('lockout-check') }
