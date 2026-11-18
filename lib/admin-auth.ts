@@ -8,7 +8,9 @@ export const ADMIN_COOKIE = 'freebet_admin_session'
 const SESSION_TTL = 2 * 60 * 60 * 1000
 export const ADMIN_STATELESS_SESSION_TTL_SECONDS = SESSION_TTL / 1000
 
-type SessionPayload = { email: string; token: string; mode?: 'stateless'; expiresAt?: number }
+function isPreviewEnvironment() { return process.env.VERCEL_ENV === 'preview' }
+
+type SessionPayload = { email: string; token: string; mode?: 'stateless'; expiresAt?: number; environment?: 'preview' }
 type CreatedAdminSession = { cookie: string; stateless: boolean }
 
 function adminConfig() {
@@ -17,7 +19,10 @@ function adminConfig() {
   return { valid: Boolean(sessionSecret && sessionSecret.length >= 32 && path), sessionSecret, path }
 }
 
-export function isAdminConfigured() { return adminConfig().valid }
+export function isAdminConfigured() {
+  const previewCredentialsConfigured = !isPreviewEnvironment() || Boolean(process.env.ADMIN_EMAIL?.trim() && process.env.ADMIN_PASSWORD_HASH?.trim())
+  return adminConfig().valid && previewCredentialsConfigured
+}
 function secret() { const configured = adminConfig().sessionSecret; if (!configured) throw new Error('Admin is not configured'); return configured }
 function sign(value: string) { return createHmac('sha256', secret()).update(value).digest('base64url') }
 function signSession(payload: SessionPayload) {
@@ -37,6 +42,8 @@ function decode(value?: string | null): SessionPayload | null {
     if (typeof parsed.email !== 'string' || typeof parsed.token !== 'string') return null
     if (parsed.mode !== undefined && parsed.mode !== 'stateless') return null
     if (parsed.mode === 'stateless' && (typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt))) return null
+    if (parsed.environment !== undefined && parsed.environment !== 'preview') return null
+    if (!isPreviewEnvironment() && parsed.environment === 'preview') return null
     return parsed
   } catch { return null }
 }
@@ -58,6 +65,11 @@ export async function verifyAdminPassword(password: string) {
 
 export async function verifyAdminCredentials(email: string, password: string) {
   const normalized = email.trim().toLowerCase()
+  if (isPreviewEnvironment()) {
+    const expectedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
+    const valid = Boolean(expectedEmail && normalized === expectedEmail && await verifyAdminPassword(password))
+    return { valid, email: normalized, admin: null }
+  }
   const db = supabase()
   const { data: admins, error } = await db.from('admin_users').select('id,email,password_hash,is_active,totp_secret_ciphertext')
   if (error) throw new Error('ADMIN_DATABASE_UNAVAILABLE')
@@ -71,6 +83,9 @@ export async function verifyAdminCredentials(email: string, password: string) {
 }
 
 export async function verifyReauthPassword(email: string, password: string) {
+  if (isPreviewEnvironment()) {
+    return email.trim().toLowerCase() === process.env.ADMIN_EMAIL?.trim().toLowerCase() && verifyAdminPassword(password)
+  }
   const db = supabase()
   const { data: admin, error } = await db.from('admin_users').select('password_hash,is_active').eq('email', email).maybeSingle()
   if (error) return false
@@ -87,11 +102,13 @@ function createStatelessAdminSession(email: string): CreatedAdminSession {
     token: randomBytes(32).toString('base64url'),
     mode: 'stateless',
     expiresAt: Date.now() + SESSION_TTL,
+    environment: isPreviewEnvironment() ? 'preview' : undefined,
   })
   return { cookie, stateless: true }
 }
 
 export async function createAdminSession(email: string, request: Request): Promise<CreatedAdminSession> {
+  if (isPreviewEnvironment()) return createStatelessAdminSession(email)
   const token = randomBytes(32).toString('base64url')
   const hash = tokenHash(token)
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown'
@@ -116,6 +133,10 @@ export async function revokeAdminSession(value?: string | null) {
 export async function verifyAdminSession(value?: string | null) {
   const payload = decode(value)
   if (!payload) return false
+  if (isPreviewEnvironment()) {
+    const expectedEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
+    return Boolean(payload.mode === 'stateless' && payload.environment === 'preview' && expectedEmail && payload.email.toLowerCase() === expectedEmail && Date.now() < (payload.expiresAt ?? 0))
+  }
   const hash = tokenHash(payload.token)
   const db = supabase()
   const { data: admins, error: adminsError } = await db.from('admin_users').select('email,is_active')
