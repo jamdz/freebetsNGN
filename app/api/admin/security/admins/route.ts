@@ -6,15 +6,15 @@ import { ADMIN_COOKIE, getAdminEmail, isAdminConfigured, verifyAdminSession, ver
 import { securityDb } from '@/lib/admin-security'
 import { buildPagination, parsePagination } from '@/lib/admin-pagination'
 
-async function authorized(password: unknown) {
+async function authorized(password: unknown, request: Request) {
   const cookie = (await cookies()).get(ADMIN_COOKIE)?.value
   const email = getAdminEmail(cookie)
-  if (!isAdminConfigured() || !(await verifyAdminSession(cookie)) || typeof password !== 'string' || !email || !(await verifyReauthPassword(email, password))) return null
+  if (!isAdminConfigured(request) || !(await verifyAdminSession(cookie, request)) || typeof password !== 'string' || !email || !(await verifyReauthPassword(email, password, request))) return null
   return { email }
 }
 
 export async function GET(request: Request) {
-  const identity = await authorized(request.headers.get('x-admin-password'))
+  const identity = await authorized(request.headers.get('x-admin-password'), request)
   if (!identity) return NextResponse.json({ error: 'Re-authentication required' }, { status: 403 })
   const { page, pageSize, from, to } = parsePagination(new URL(request.url).searchParams, { defaultSize: 10, allowed: [10, 25, 50] })
   const { data, count, error } = await securityDb().from('admin_users').select('id,email,is_active,created_at,totp_secret_ciphertext', { count: 'exact' }).order('created_at', { ascending: true }).range(from, to)
@@ -27,7 +27,7 @@ const createSchema = z.object({ email: z.string().email().max(254), password: z.
 export async function POST(request: Request) {
   const parsed = createSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Valid email and password (at least 12 characters) are required' }, { status: 400 })
-  const identity = await authorized(parsed.data.admin_password)
+  const identity = await authorized(parsed.data.admin_password, request)
   if (!identity) return NextResponse.json({ error: 'Re-authentication required' }, { status: 403 })
   const { email, password } = parsed.data
   const db = securityDb()
@@ -41,7 +41,7 @@ const patchSchema = z.object({ id: z.string().uuid(), is_active: z.boolean().opt
 export async function PATCH(request: Request) {
   const parsed = patchSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid administrator update' }, { status: 400 })
-  const identity = await authorized(parsed.data.admin_password)
+  const identity = await authorized(parsed.data.admin_password, request)
   if (!identity) return NextResponse.json({ error: 'Re-authentication required' }, { status: 403 })
   const { id, password, is_active } = parsed.data
   if (is_active === false) {
