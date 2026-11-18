@@ -24,7 +24,7 @@ export function useAdConsent() {
     } catch {}
     const previewHost = hostname !== configuredProductionHost && (
       hostname.endsWith('.vercel.app') || hostname.endsWith('.v0.dev') ||
-      hostname.endsWith('.v0.app') || hostname.endsWith('.vusercontent.net')
+      hostname.endsWith('.v0.app') || hostname.endsWith('.v0.build') || hostname.endsWith('.vusercontent.net')
     )
     const previewCookieAttributes = previewHost ? '; SameSite=None; Secure; Partitioned' : '; SameSite=Lax'
     document.cookie = `freebet_ads_consent=${value ? 'accepted' : 'declined'}; Max-Age=31536000; Path=/${previewCookieAttributes}`
