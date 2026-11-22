@@ -52,6 +52,10 @@ const nextConfig = {
     return [{ source: '/((?!ad-frame).*)', headers: securityHeaders }]
   },
   images: { formats: ['image/avif', 'image/webp'] },
+  experimental: {
+    cpus: 1,
+    workerThreads: false,
+  },
 }
 
 export default nextConfig

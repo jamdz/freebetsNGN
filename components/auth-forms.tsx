@@ -58,7 +58,6 @@ export function ResetPasswordForm() {
   const [sessionState, setSessionState] = useState<'checking' | 'ready' | 'missing'>('checking')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const supabase = createClient()
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<{ password: string; confirmPassword: string }>({ resolver: zodResolver(resetPasswordSchema) })
   const password = watch('password', '')
   const strengthScore = [password.length >= 10, /[a-z]/.test(password), /[A-Z]/.test(password), /\d/.test(password), /[^a-zA-Z0-9]/.test(password)].filter(Boolean).length
@@ -69,16 +68,18 @@ export function ResetPasswordForm() {
       : 'Add uppercase and lowercase letters, a number, or a symbol to make it stronger.'
 
   useEffect(() => {
+    const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionState(session ? 'ready' : 'missing')
     })
     return () => subscription.unsubscribe()
-  }, [supabase])
+  }, [])
 
   const submit = handleSubmit(async ({ password: newPassword }) => {
     setError('')
     setSuccess('')
     try {
+      const supabase = createClient()
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
       if (updateError) {
         setError('Unable to update your password. Your reset link may have expired; request a new one and try again.')
